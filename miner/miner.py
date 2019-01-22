@@ -44,13 +44,13 @@ def annotatedGenes(filepath):
     important_genes = pd.read_table(filepath)
     importantEnsembl = list(set(list(important_genes.iloc[:,0])))
     return importantEnsembl
-        
-    
+
+"""
 def loadMiner(location="Desktop",expression=True):
     import pandas as pd
     import sys
     import os
-    
+
     home = os.path.expanduser("~")
     minerPath = home+"/"+location+"/miner/src"
     sys.path.append(minerPath)
@@ -68,7 +68,7 @@ def loadMiner(location="Desktop",expression=True):
         Zscore = pd.read_csv(expressionPath,index_col=0,header=0)
         return Zscore, importantEnsembl
         
-    return importantEnsembl
+    return importantEnsembl"""
 
 def hyper(population,set1,set2,overlap):
     
@@ -857,7 +857,7 @@ def condenseOutput(output):
             results[key] = resultsDict[key]
     return results
 
-def parallelMotifAnalysis(mechanisticOutput,coexpressionModules,expressionData,numCores=5,networkPath=os.path.join("..","data","network_dictionaries")):
+def parallelMotifAnalysis(mechanisticOutput,coexpressionModules,expressionData,numCores=5,networkPath=os.path.join("data","network_dictionaries")):
 
     primary_tf_to_motif = read_pkl(os.path.join(networkPath,"primary_tf_to_motif.pkl"))
     tfbsdb_ensembl = read_pkl(os.path.join(networkPath,"tfbsdb_ensembl.pkl"))
@@ -917,7 +917,8 @@ def expandClusters(task):
     
     return expansionSets
 
-def parallelExpansion(dataframe,clusters,numCores,resultsDirectory,components=None,deleteTmpFiles="../tmp"):  
+def parallelExpansion(dataframe,clusters,numCores,resultsDirectory,components=None,
+                      deleteTmpFiles="tmp"):  
 
     if not os.path.isdir(resultsDirectory):
         os.mkdir(resultsDirectory)        
@@ -1832,7 +1833,9 @@ def survivalMembershipAnalysisDirect(membershipDf,SurvivalDf,key):
         
     return coxResults
 
-def parallelSurvivalAnalysis(coexpressionModules,expressionData,numCores=5,survivalPath=os.path.join("..","data","survivalIA12.csv"),survivalData=None):
+def parallelSurvivalAnalysis(coexpressionModules,expressionData,numCores=5,
+                             survivalPath=os.path.join("data", "survivalIA12.csv"),
+                             survivalData=None):
 
     if survivalData is None:
         survivalData = pd.read_csv(survivalPath,index_col=0,header=0)
@@ -1844,7 +1847,9 @@ def parallelSurvivalAnalysis(coexpressionModules,expressionData,numCores=5,survi
 
     return survivalAnalysis
 
-def parallelMemberSurvivalAnalysis(membershipDf,numCores=5,survivalPath=os.path.join("..","data","survivalIA12.csv"),survivalData=None):
+def parallelMemberSurvivalAnalysis(membershipDf,numCores=5,
+                                   survivalPath=os.path.join("data","survivalIA12.csv"),
+                                   survivalData=None):
 
     if survivalData is None:
         survivalData = pd.read_csv(survivalPath,index_col=0,header=0)
@@ -1976,7 +1981,7 @@ def biclusterTfIncidence(mechanisticOutput):
     
     return bcTfIncidence
 
-def tfExpression(expressionData,motifPath=os.path.join("..","data","all_tfs_to_motifs.pkl")):
+def tfExpression(expressionData,motifPath=os.path.join("data","all_tfs_to_motifs.pkl")):
 
     allTfsToMotifs = read_pkl(motifPath)
     tfs = list(set(allTfsToMotifs.keys())&set(expressionData.index))
@@ -2106,7 +2111,8 @@ def generateCausalInputs(expressionData,mechanisticOutput,coexpressionModules,mu
     
     return
 
-def processCausalResults(causalPath=os.path.join("..","results","causal"),causalDictionary=False):
+def processCausalResults(causalPath=os.path.join("results", "causal"),
+                         causalDictionary=False):
 
     causalFiles = []           
     for root, dirs, files in os.walk(causalPath, topdown=True):
@@ -2291,7 +2297,8 @@ def showCluster(expressionData,coexpressionModules,key):
     plt.ylabel("Genes",FontSize=14)     
     return     
 
-def identifierConversion(expressionData,conversionTable=os.path.join("..","data","identifier_mappings.txt")):
+def identifierConversion(expressionData,
+                         conversionTable=os.path.join("data", "identifier_mappings.txt")):
     
     idMap = pd.read_table(conversionTable)
     genetypes = list(set(idMap.iloc[:,2]))

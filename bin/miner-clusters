@@ -1,0 +1,30 @@
+#!/usr/bin/env python
+
+import argparse
+import pandas as pd
+import numpy as np
+import json
+
+from miner import miner
+
+DESCRIPTION = """miner-clusters - MINER revised cluster memberships"""
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description=DESCRIPTION)
+    parser.add_argument('expfile', help="input matrix")
+    parser.add_argument('mapfile', help="identifier mapping file")
+    parser.add_argument('initclusters', help="initial cluster file")
+    parser.add_argument('outfile', help="output file")
+    args = parser.parse_args()
+
+    exp_data = pd.read_csv(args.expfile, index_col=0, header=0)
+    exp_data = miner.identifierConversion(exp_data, args.mapfile)
+    exp_data = miner.zscore(exp_data)
+
+    with open(args.initclusters, 'r') as out:
+        init_clusters = json.load(out)
+
+    revised_clusters = miner.reviseInitialClusters(init_clusters, exp_data)
+    with open(args.outfile, 'w') as out:
+        json.dump(revised_clusters, out)

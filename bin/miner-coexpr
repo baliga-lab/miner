@@ -4,6 +4,8 @@ import argparse
 import pandas as pd
 import numpy as np
 import json
+import sys
+import os
 
 from miner import miner
 
@@ -28,9 +30,13 @@ if __name__ == '__main__':
                         help="overexpression threshold")
 
     args = parser.parse_args()
+    if not os.path.exists(args.expfile):
+        sys.exit("expression file not found")
+    if not os.path.exists(args.mapfile):
+        sys.exit("identifier mapping file not found")
 
     exp_data = pd.read_csv(args.expfile, index_col=0, header=0)
-    exp_data = miner.identifierConversion(exp_data, args.mapfile)
+    exp_data, conv_table = miner.identifierConversion(exp_data, args.mapfile)
     exp_data = miner.zscore(exp_data)
     init_clusters = miner.cluster(exp_data, minNumberGenes=args.mingenes,
                                   overExpressionThreshold=args.overexpthresh,

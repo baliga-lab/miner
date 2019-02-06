@@ -9,7 +9,7 @@ import os
 
 from miner import miner
 
-DESCRIPTION = """miner-clusters - MINER revise initial clusters"""
+DESCRIPTION = """miner-coexpr - MINER cluster expression data."""
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -48,7 +48,12 @@ if __name__ == '__main__':
     # sort cluster list from largest to smallest
     init_clusters.sort(key=lambda s: -len(s))
 
+    revised_clusters = miner.reviseInitialClusters(init_clusters, exp_data)
+    with open(args.outfile, 'w') as out:
+        json.dump(revised_clusters, out)
+
+    """
     # serialize to JSON
     ser_clusters = [list(c) for c in init_clusters]
     with open(args.outfile, 'w') as out:
-        json.dump(ser_clusters, out)
+        json.dump(ser_clusters, out)"""

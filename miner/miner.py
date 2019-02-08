@@ -883,6 +883,84 @@ def parallelMotifAnalysis(mechanisticOutput,coexpressionModules,expressionData,n
 
     return motifAnalysis
 
+def parallelEnrichment(task):
+    partition = task[0]
+    test_keys, dict_, reference_dict, reciprocal_dict, population_len = task[1]
+    test_keys = test_keys[partition[0]:partition[1]]
+           
+    results_dict = {}
+    for ix in test_keys:
+        basline_ps = {k:1 for k in reference_dict.keys()}
+        genes_interrogated = dict_[ix]
+        genes_overlapping = list(set(genes_interrogated)&set(reciprocal_dict))
+        count_overlapping = Counter(np.hstack([reciprocal_dict[i] for i in genes_overlapping]))
+        rank_overlapping = count_overlapping.most_common()
+
+        for h in range(len(rank_overlapping)):
+            ct = rank_overlapping[h][1]
+            if ct==1:
+                break
+            key = rank_overlapping[h][0]
+            basline_ps[key] = hyper(population_len,len(reference_dict[key]),len(genes_interrogated),rank_overlapping[h][1]) 
+
+        corrected = bh_correction(basline_ps,threshold=0.1)
+        if len(corrected) > 0:
+            results_dict[ix] = corrected
+
+    return results_dict
+
+
+def enrichmentAnalysis(dict_,reference_dict,reciprocal_dict,genes_with_expression,resultsDirectory,numCores=5,min_overlap = 4,threshold = 0.05):
+    t1 = time.time()
+    print('initializing enrichment analysis')
+    
+    os.chdir(os.path.join(resultsDirectory,"..","data","network_dictionaries"))
+    reference_dict = read_pkl(reference_dict)
+    reciprocal_dict = read_pkl(reciprocal_dict)
+    os.chdir(os.path.join(resultsDirectory,"..","src"))
+
+    genes_in_reference_dict = reciprocal_dict.keys()
+    population_len = len(set(genes_with_expression)&set(genes_in_reference_dict))
+    best_ps = {key:1 for key in dict_.keys()}
+
+    for key in dict_.keys():
+        genes_interrogated = dict_[key]
+        genes_overlapping = list(set(genes_interrogated)&set(reciprocal_dict))
+        if len(genes_overlapping) < min_overlap:
+            continue
+        count_overlapping = Counter(np.hstack([reciprocal_dict[i] for i in genes_overlapping]))
+        rank_overlapping = count_overlapping.most_common()
+        if rank_overlapping[0][1] < min_overlap:
+            continue
+
+        best_ps[key] = hyper(population_len,len(reference_dict[rank_overlapping[0][0]]),len(genes_interrogated),rank_overlapping[0][1]) 
+
+    test_keys = [key for key in best_ps.keys() if best_ps[key] <= threshold]
+
+
+    taskSplit = splitForMultiprocessing(test_keys,numCores)
+    taskData = (test_keys, dict_, reference_dict, reciprocal_dict, population_len)
+    tasks = [[taskSplit[i],taskData] for i in range(len(taskSplit))]
+    enrichmentOutput = multiprocess(parallelEnrichment,tasks)
+    combinedResults = condenseOutput(enrichmentOutput)
+    
+    t2 = time.time()
+    print('completed enrichment analysis in {:.2f} seconds'.format(t2-t1))
+
+    return combinedResults
+
+def convertGO(goBio_enriched,resultsDirectory):
+    goConversionPath = os.path.join(resultsDirectory,"..","data","network_dictionaries","GO_terms_conversion.csv")
+    goBioConversion = pd.read_csv(goConversionPath,index_col=0,header=0)
+    go_terms_enriched = {}
+    for module in goBio_enriched.keys():
+        conv = {}
+        for key in goBio_enriched[module].keys():
+            tmp = goBioConversion.loc[key,"GO_function"]
+            conv[tmp] = goBio_enriched[module][key]
+        go_terms_enriched[module] = conv
+    return go_terms_enriched
+
 def expandClusters(task):
     
     import time    
@@ -1048,7 +1126,7 @@ def remix(df,frequencyClusters):
         finalClusters.sort(key = lambda s: -len(s))
     return finalClusters
 
-def f1Decomposition(sampleMembers,thresholdSFM=0.333,sampleFrequencyMatrix=None):
+def f1Decomposition(sampleMembers=None,thresholdSFM=0.333,sampleFrequencyMatrix=None):
     # thresholdSFM is the probability cutoff that makes the density of the binary similarityMatrix = 0.15
     # sampleMembers is a dictionary with features as keys and members as elements
 
@@ -1117,6 +1195,32 @@ def f1Decomposition(sampleMembers,thresholdSFM=0.333,sampleFrequencyMatrix=None)
     similarityClusters.sort(key = lambda s: -len(s))
     print('done!')
     return similarityClusters
+
+def featureFrequencyMatrix(df,frequencies=False,freqThreshold=0.1):
+    features = df.index
+    samples = df.columns
+    template = pd.DataFrame(np.zeros((len(features),len(features))))
+    template.index = features
+    template.columns = features
+    ct = 0
+    for f in features:
+        ct+=1
+        if ct%50==0:
+            print(ct)
+        for s in samples:
+            tmp = df.loc[f,s]
+            if tmp==0:
+                continue
+            hits = np.where(df.loc[:,s]==tmp)[0]
+            template.iloc[hits,hits]+=1
+    trace = np.array([template.iloc[i,i] for i in range(template.shape[0])])
+    normDf = ((template.T)/trace).T
+    if frequencies is not False:
+        return normDf
+    normDf[normDf<freqThreshold]=0
+    normDf[normDf>0]=1
+
+    return normDf
 
 def getSimilarityClusters(sampleDictionary,fequencyThreshold=0.333,similarityThreshold=0.15,highResolution=False):   
     sampleFrequencyMatrix = sampleCoincidenceMatrix(sampleDictionary,freqThreshold=fequencyThreshold,frequencies=True)
@@ -1268,7 +1372,7 @@ def expandRegulonDictionary(regulons):
             regulonDictionary[regulonKey] = regulons[tf][key]
     return regulonDictionary
 
-def orderMembership(centroidMatrix,membershipMatrix,mappedClusters,ylabel="",resultsDirectory=None):
+def orderMembership(centroidMatrix,membershipMatrix,mappedClusters,ylabel="",aspect=None,resultsDirectory=None):
 
     centroidRank = []
     alreadyMapped = []
@@ -1291,11 +1395,10 @@ def orderMembership(centroidMatrix,membershipMatrix,mappedClusters,ylabel="",res
     except:
         pass    
     ax.imshow(ordered_matrix,cmap='viridis')
-    try:
-        asp = ordered_matrix.shape[1]/float(ordered_matrix.shape[0])
-        ax.set_aspect(asp)
-    except:
-        pass
+    if aspect is None:
+        aspect = ordered_matrix.shape[1]/float(ordered_matrix.shape[0])
+    
+    ax.set_aspect(aspect)
     ax.grid(False)
         
     plt.title(ylabel.split("s")[0]+"Activation",FontSize=16)
@@ -2630,7 +2733,7 @@ def plotSimilarity(similarityMatrix,orderedSamples,vmin=0,vmax=0.5,title="Simila
         plt.savefig(savefig)
     return
 
-def plotDifferentialMatrix(overExpressedMembersMatrix,underExpressedMembersMatrix,orderedOverExpressedMembers,cmap="viridis",saveFile=None):
+def plotDifferentialMatrix(overExpressedMembersMatrix,underExpressedMembersMatrix,orderedOverExpressedMembers,cmap="viridis",aspect="auto",saveFile=None):
     differentialActivationMatrix = overExpressedMembersMatrix-underExpressedMembersMatrix
     fig = plt.figure(figsize=(7,7))  
     ax = fig.add_subplot(111)
@@ -2640,14 +2743,11 @@ def plotDifferentialMatrix(overExpressedMembersMatrix,underExpressedMembersMatri
     except:
         pass
     orderedDM = differentialActivationMatrix.loc[orderedOverExpressedMembers.index,orderedOverExpressedMembers.columns]
-    ax.imshow(orderedDM,cmap=cmap,vmin=-1,vmax=1)
-    asp = differentialActivationMatrix.shape[1]/float(differentialActivationMatrix.shape[0])
-    ax.set_aspect(asp)
+    ax.imshow(orderedDM,cmap=cmap,vmin=-1,vmax=1,aspect=aspect)
     ax.grid(False)
     if saveFile is not None:
         plt.ylabel("Modules",FontSize=14)
         plt.xlabel("Samples",FontSize=14)
-        ax.set_aspect(asp)
         ax.grid(False)        
         plt.savefig(saveFile,bbox_inches="tight")
     return orderedDM
@@ -2677,6 +2777,153 @@ def stateReduction(df,clusterList,stateThreshold=0.75):
         
     return statesDf
 
+def stateProjection(df,programs,states,stateThreshold=0.75,saveFile=None):
+    
+    df = df.loc[:,np.hstack(states)]
+    statesDf = pd.DataFrame(np.zeros((len(programs),df.shape[1])))
+    statesDf.index = range(len(programs))
+    statesDf.columns = df.columns
+
+    for i in range(len(programs)):
+        state = programs[i]
+        subset = df.loc[state,:]
+
+        state_scores = subset.sum(axis=0)/float(subset.shape[0])
+
+        keep_high = np.where(state_scores>=stateThreshold)[0]
+        keep_low = np.where(state_scores<=-1*stateThreshold)[0]
+        hits_high = np.array(df.columns)[keep_high]
+        hits_low = np.array(df.columns)[keep_low]
+
+        statesDf.loc[i,hits_high] = 1
+        statesDf.loc[i,hits_low] = -1
+        
+    if saveFile is not None:
+        fig = plt.figure(figsize=(7,7))
+        ax = fig.gca()
+        ax.imshow(statesDf,cmap="bwr",vmin=-1,vmax=1,aspect='auto')
+        ax.grid(False)
+        ax.set_ylabel("Transcriptional programs",FontSize=14)
+        ax.set_xlabel("Samples",FontSize=14)
+        plt.savefig(saveFile)
+        
+    return statesDf
+
+def mosaic(dfr,clusterList,saveFile=None,random_state=12):    
+    
+    import sklearn
+
+    lowResolutionPrograms = [[] for i in range(len(clusterList))]
+    sorting_hat = []
+    for i in range(len(clusterList)):
+        patients = clusterList[i]
+        if len(patients) < 4:
+            continue
+        subset = dfr.loc[:,patients]
+        density = subset.sum(axis=1)/float(subset.shape[1])
+        sorting_hat.append(np.array(density))
+    
+    enrichment_matrix = np.vstack(sorting_hat).T    
+    choice = np.argmax(enrichment_matrix,axis=1)
+    for i in range(dfr.shape[0]):
+        lowResolutionPrograms[choice[i]].append(dfr.index[i])
+    
+    print(len(lowResolutionPrograms))
+    
+    #Cluster modules into transcriptional programs
+    
+    y_clusters = []
+    for program in range(len(lowResolutionPrograms)):
+        regs = lowResolutionPrograms[program]
+        if len(regs) == 0:
+            continue
+        df = dfr.loc[regs,:]
+        sil_scores = []
+        max_clusters_y = min(100,int(len(regs)/2.))
+        for numClusters_y in range(2,max_clusters_y):
+            clusters_y, labels_y, centroids_y = kmeans(df,numClusters=numClusters_y,random_state=random_state)
+            clusters_y.sort(key=lambda s: -len(s))
+    
+            kmSS=sklearn.metrics.silhouette_score(df,labels_y,metric='euclidean')
+            sil_scores.append(kmSS)
+    
+        if len(sil_scores) > 0:
+            top_hit = min(np.where(np.array(sil_scores)>=0.95*max(sil_scores))[0]+2)
+            print(top_hit)
+            clusters_y, labels_y, centroids_y = kmeans(df,numClusters=top_hit,random_state=random_state)
+            clusters_y.sort(key=lambda s: -len(s))
+            y_clusters.append(list(clusters_y))
+    
+        elif len(sil_scores) == 0:
+            y_clusters.append(regs)
+    
+    order_y = np.hstack(np.hstack(y_clusters))
+    
+    #Cluster patients into subtype states
+    
+    x_clusters = []
+    for c in range(len(clusterList)):
+        patients = clusterList[c]
+        if len(patients) == 0:
+            continue
+        df = dfr.loc[order_y,patients].T
+        sil_scores = []
+        
+        max_clusters_x = min(100,int(len(patients)/2.))
+        for numClusters_x in range(2,max_clusters_x):
+            clusters_x, labels_x, centroids_x = kmeans(df,numClusters=numClusters_x,random_state=random_state)
+            clusters_x.sort(key=lambda s: -len(s))
+    
+            kmSS=sklearn.metrics.silhouette_score(df,labels_x,metric='euclidean')
+            sil_scores.append(kmSS)
+    
+        if len(sil_scores) > 0:
+            top_hit = min(np.where(np.array(sil_scores)>=0.999*max(sil_scores))[0]+2)
+            print(top_hit)
+            clusters_x, labels_x, centroids_x = kmeans(df,numClusters=top_hit,random_state=random_state)
+            clusters_x.sort(key=lambda s: -len(s))
+            x_clusters.append(list(clusters_x))
+        elif len(sil_scores) == 0:
+            x_clusters.append(patients)
+    try:
+        combine_x = []
+        for x in range(len(x_clusters)):
+            if type(x_clusters[x][0]) is not str:
+                for k in range(len(x_clusters[x])):
+                    combine_x.append(x_clusters[x][k])
+            else:
+                combine_x.append(x_clusters[x])
+                               
+        order_x = np.hstack(combine_x)
+        fig = plt.figure(figsize=(7,7))
+        ax = fig.gca()
+        ax.imshow(dfr.loc[order_y,order_x],cmap="bwr",vmin=-1,vmax=1)
+        ax.set_aspect(dfr.shape[1]/float(dfr.shape[0]))
+        ax.grid(False)
+        ax.set_ylabel("Regulons",FontSize=14)
+        ax.set_xlabel("Samples",FontSize=14)
+        if saveFile is not None:
+            plt.savefig(saveFile)
+            
+        return y_clusters, combine_x
+    
+    except:
+        pass
+        
+    return y_clusters, x_clusters
+
+def transcriptionalPrograms(programs,reference_dictionary):
+    transcriptionalPrograms = {}
+    programRegulons = {}
+    p_stack = np.hstack(programs)
+    for j in range(len(p_stack)):
+        key = ("").join(["TP",str(j)])
+        regulonList = [i for i in p_stack[j]]
+        programRegulons[key] = regulonList
+        tmp = [reference_dictionary[i] for i in p_stack[j]]
+        transcriptionalPrograms[key] = list(set(np.hstack(tmp)))
+    return transcriptionalPrograms, programRegulons
+
 def tsne(matrix,perplexity=100,n_components=2,n_iter=1000,plotOnly=True,plotColor="red",alpha=0.4,dataOnly=False):
     from sklearn.manifold import TSNE
     X = np.array(matrix.T)
@@ -2692,12 +2939,14 @@ def tsne(matrix,perplexity=100,n_components=2,n_iter=1000,plotOnly=True,plotColo
         
     return X_embedded
 
-def plotStates(statesDf,tsneDf,numCols=3,saveFile=None,size=10):
-    number_figure_columns = numCols
-    number_figure_rows = int(np.ceil(float(statesDf.shape[0])/number_figure_columns))
-    fig = plt.figure(figsize=(10,10))
+def plotStates(statesDf,tsneDf,numCols=3,numRows=None,saveFile=None,size=10,aspect=1,scale=2):
+
+    if numRows is None:
+        numRows = int(np.ceil(float(statesDf.shape[0])/numCols))
+        
+    fig = plt.figure(figsize=(scale*numRows,scale*numCols))
     for ix in range(statesDf.shape[0]):
-        ax = fig.add_subplot(number_figure_rows,number_figure_columns,ix+1)
+        ax = fig.add_subplot(numRows,numCols,ix+1)
         # overlay single state onto tSNE plot
         stateIndex = ix
 
@@ -2706,6 +2955,7 @@ def plotStates(statesDf,tsneDf,numCols=3,saveFile=None,size=10):
         group.columns = ["status"]
         group.loc[statesDf.columns,"status"] = list(statesDf.iloc[stateIndex,:])
         group = np.array(group.iloc[:,0])
+        ax.set_aspect(aspect)
         ax.scatter(tsneDf.iloc[:,0],tsneDf.iloc[:,1],cmap="bwr",c=group,vmin=-1,vmax=1,s=size)
 
     if saveFile is not None:

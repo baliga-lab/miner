@@ -1,6 +1,11 @@
 Changes
 =======
 
+Version 1.0.3, 2019/02/23
+-------------------------
+
+  - integrate first stable MINER version
+
 Version 1.0.2, 2019/02/04
 -------------------------
 

@@ -8,7 +8,7 @@ DESCRIPTION = 'Mechanistic Inference of Non-edge Relationships'
 LICENSE = 'LGPL V3'
 URI = 'https://github.com/baliga-lab/miner'
 AUTHOR = 'Baliga Lab, Institute for Systems Biology'
-VERSION = '1.0.2'
+VERSION = '1.0.3'
 
 KEYWORDS = ["isb", "miner", "mechanistic", "inference", "network", "gene", "regulatory", "biological"]
 

@@ -13,8 +13,7 @@ at the command prompt:
 
 
     usage: miner-coexpr [-h] [-mg MINGENES] [-moxs MINOVEREXPSAMP]
-                        [-mx MAXEXCLUSION] [-rs RANDSTATE] [-i ITERATIONS]
-                        [-oxt OVEREXPTHRESH]
+                        [-mx MAXEXCLUSION] [-rs RANDSTATE] [-oxt OVEREXPTHRESH]
                         expfile mapfile outfile
 
     miner-coexpr - MINER cluster expression data.
@@ -34,8 +33,6 @@ at the command prompt:
                             maximum exclusion
       -rs RANDSTATE, --randstate RANDSTATE
                             random state
-      -i ITERATIONS, --iterations ITERATIONS
-                            number of iterations
       -oxt OVEREXPTHRESH, --overexpthresh OVEREXPTHRESH
                             overexpression threshold
 
@@ -55,5 +52,4 @@ In addition, you can specify the following optional arguments:
   * ``--minoverexpsamp`` or ``--moxs``: minimum number of overexpression samples
   * ``--maxexclusion`` or ``-mx``: maximum exclusion
   * ``--randstate`` or ``-rs``: random state
-  * ``--iterations`` or ``-i``: number of iterations
   * ``--overexpthresh`` or ``-oxt``: overexpression threshold

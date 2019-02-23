@@ -1,4 +1,7 @@
 build
+_build
 dist
 *.egg-info
 results
+*.pyc
+.ipynb_checkpoints

@@ -1247,11 +1247,18 @@ def transcriptionalPrograms(programs,reference_dictionary):
     p_stack = []
     programs_flattened = np.array(programs).flatten()
     for i in range(len(programs_flattened)):
-        if type(programs_flattened[i][0])==pd.core.indexes.base.Index:
+        try:
+            if type(programs_flattened[i][0])==pd.core.indexes.base.Index:
+                for j in range(len(programs_flattened[i])):
+                    p_stack.append(list(programs[i][j]))        
+            else:
+                p_stack.append(list(programs[i]))
+        except:
+            ## WW: on my Pandas version (0.23.4) there will be an exception due
+            ## to pandas.core.indexes not existing. This will do a hopefully
+            ## safe fallback
             for j in range(len(programs_flattened[i])):
-                p_stack.append(list(programs[i][j]))        
-        else:
-            p_stack.append(list(programs[i]))
+                p_stack.append(list(programs[i][j]))
 
     for j in range(len(p_stack)):
         key = ("").join(["TP",str(j)])

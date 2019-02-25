@@ -4,7 +4,7 @@ The miner-bcmembers tool
 This utility generates revised coexpression clusters from a gene expression
 file.
 
-You can see the tool's available options when you enter ``miner-coexpr -h``
+You can see the tool's available options when you enter ``miner-bcmembers -h``
 at the command prompt:
 
 .. highlight:: none

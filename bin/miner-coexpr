@@ -49,9 +49,3 @@ if __name__ == '__main__':
     revised_clusters = miner.reviseInitialClusters(init_clusters, exp_data)
     with open(args.outfile, 'w') as out:
         json.dump(revised_clusters, out)
-
-    """
-    # serialize to JSON
-    ser_clusters = [list(c) for c in init_clusters]
-    with open(args.outfile, 'w') as out:
-        json.dump(ser_clusters, out)"""

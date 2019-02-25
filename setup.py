@@ -8,7 +8,7 @@ DESCRIPTION = 'Mechanistic Inference of Non-edge Relationships'
 LICENSE = 'LGPL V3'
 URI = 'https://github.com/baliga-lab/miner'
 AUTHOR = 'Baliga Lab, Institute for Systems Biology'
-VERSION = '1.0.3'
+VERSION = '1.0.4'
 
 KEYWORDS = ["isb", "miner", "mechanistic", "inference", "network", "gene", "regulatory", "biological"]
 
@@ -45,4 +45,5 @@ if __name__ == '__main__':
           zip_safe=False,
           classifiers=CLASSIFIERS,
           install_requires=INSTALL_REQUIRES,
-          scripts=['bin/miner-coexpr', 'bin/miner-enrichment', 'bin/miner-bcmembers'])
+          scripts=['bin/miner-coexpr', 'bin/miner-enrichment', 'bin/miner-bcmembers',
+                   'bin/miner-subtypes'])

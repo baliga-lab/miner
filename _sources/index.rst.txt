@@ -16,3 +16,4 @@ from experimental data.
    miner-coexpr <miner_coexpr>
    miner-enrichment <miner_enrichment>
    miner-bcmembers <miner_bcmembers>
+   miner-subtypes <miner_subtypes>

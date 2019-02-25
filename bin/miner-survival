@@ -1,0 +1,179 @@
+#!/usr/bin/env python
+
+import argparse
+import pandas as pd
+import numpy as np
+import json
+import sys
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from miner import miner
+
+DESCRIPTION = """miner-survival - MINER survival analysis"""
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description=DESCRIPTION)
+    parser.add_argument('expfile', help="input matrix")
+    parser.add_argument('mapfile', help="identifier mapping file")
+    parser.add_argument('regulons', help="regulons JSON file")
+    parser.add_argument('survfile', help="survival data CSV file")
+
+    parser.add_argument('outdir', help="output directory")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.regulons):
+        sys.exit("regulons file not found")
+
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
+    exp_data = pd.read_csv(args.expfile, index_col=0, header=0)
+    exp_data, conv_table = miner.identifierConversion(exp_data, args.mapfile)
+    exp_data = miner.zscore(exp_data)
+    bkgd = miner.backgroundDf(exp_data)
+
+    with open(args.regulons) as infile:
+        regulons = json.load(infile)
+    regulon_modules, regulon_df = miner.regulonDictionary(regulons)
+    overexpressed_members = miner.biclusterMembershipDictionary(regulon_modules, bkgd, label=2)
+    overexpressed_members_matrix = miner.membershipToIncidence(overexpressed_members,
+                                                               exp_data)
+    underexpressed_members = miner.biclusterMembershipDictionary(regulon_modules, bkgd, label=0)
+    underexpressed_members_matrix = miner.membershipToIncidence(underexpressed_members,
+                                                                exp_data)
+
+    sample_dictionary = overexpressed_members
+    sample_matrix = overexpressed_members_matrix
+
+
+    # From subtypes
+    similarity_clusters = miner.f1Decomposition(sample_dictionary, thresholdSFM=0.1)
+    initial_classes = [i for i in similarity_clusters if len(i) > 4]
+    centroid_clusters, centroid_matrix = miner.centroids(initial_classes,
+                                                         sample_matrix,
+                                                         f1Threshold=0.1,
+                                                         returnCentroids=True)
+    mapped_clusters = miner.mapExpressionToNetwork(centroid_matrix, sample_matrix,
+                                                   threshold = 0.05)
+    ordered_overexpressed_members = miner.orderMembership(centroid_matrix,
+                                                          sample_matrix,
+                                                          mapped_clusters,
+                                                          ylabel="Modules",
+                                                          resultsDirectory=args.outdir)
+
+
+    # We need the states and states_dm objects from here, would be great if
+    # we did not have to plot
+    ordered_dm = miner.plotDifferentialMatrix(overexpressed_members_matrix,
+                                              underexpressed_members_matrix,
+                                              ordered_overexpressed_members,
+                                              cmap="bwr", aspect="auto",
+                                              saveFile=os.path.join(args.outdir,
+                                                                    "centroid_clusters_heatmap.pdf"))
+
+    programs, states = miner.mosaic(dfr=ordered_dm,
+                                    clusterList=centroid_clusters,
+                                    minClusterSize_x=5,
+                                    minClusterSize_y=5,
+                                    allow_singletons=False,
+                                    max_groups=50,
+                                    saveFile=os.path.join(args.outdir,"mosaic_heatmap.pdf"),
+                                    random_state=12)
+
+
+    transcriptional_programs, program_regulons = miner.transcriptionalPrograms(programs,
+                                                                               regulon_modules)
+    program_list = [program_regulons[("").join(["TP",str(i)])]
+                    for i in range(len(program_regulons))]
+    states_df = miner.stateProjection(df=ordered_dm, programs=program_list,
+                                      states=states, stateThreshold=0.65,
+                                      saveFile=os.path.join(args.outdir, "transcriptional_programs_vs_samples.pdf"))
+
+    # Survival stuff comes here
+    survival_mmrf = pd.read_csv(args.survfile, index_col=0, header=0)
+    survival_df_mmrf = survival_mmrf.iloc[:,0:2]
+    survival_df_mmrf.columns = ["duration","observed"]
+    overexpressed_members_matrix_mmrf = overexpressed_members_matrix
+    overexpressed_members_matrix_mmrf = overexpressed_members_matrix_mmrf.loc[ordered_overexpressed_members.index,:]
+
+    # generate Kaplan-Meier estimates
+    km_df = miner.kmAnalysis(survivalDf=survival_df_mmrf, durationCol="duration",
+                             statusCol="observed")
+    # generate GuanRank scores
+    guan_survival_df_mmrf = miner.guanRank(kmSurvival=km_df)
+
+    srv = guan_survival_df_mmrf.copy()
+    guan_srv = pd.DataFrame(srv.loc[:,"GuanScore"])
+    guan_srv.columns = ["value"]
+    guan_srv_group = pd.DataFrame(np.zeros(guan_srv.shape[0]))
+    guan_srv_group.index = guan_srv.index
+    guan_srv_group.columns = ["group"]
+    guan_srv_df = pd.concat([guan_srv,guan_srv_group],axis=1)
+
+    mmrf_groups = [i for i in states if len(i) >= int(np.ceil(0.01 * exp_data.shape[1]))]
+    labels = range(len(mmrf_groups))
+    medians = []
+
+    for i in range(len(mmrf_groups)):
+        group = list(set(srv.index) & set(mmrf_groups[i]))
+        if len(group) >= 1:
+            medians.append(np.median(guan_srv_df.loc[group, "value"]))
+        elif len(group) < 1:
+            medians.append(0)
+        label = labels[i]
+        guan_srv_df.loc[group,"group"] = label
+
+    plt.close('all')  # if we don't do this, it looks like that the plot below is wrong
+
+    survival_tag = "MMRF_risk_groups"
+    sns.boxplot(x='group', y='value', data=guan_srv_df, order=np.argsort(medians))
+    plt.ylabel("Risk score")
+    boxplot_filename = ("_").join([survival_tag,"boxplot.pdf"])
+    plt.savefig(os.path.join(args.outdir, boxplot_filename), bbox_inches="tight")
+
+
+    srv = survival_df_mmrf.copy()
+    cox_programs = miner.parallelMemberSurvivalAnalysis(membershipDf=states_df,
+                                                        numCores=5,
+                                                        survivalPath="",
+                                                        survivalData=srv)
+
+    cox_hr = [cox_programs[i][0] for i in range(len(cox_programs))]
+    cox_p = [cox_programs[i][1] for i in range(len(cox_programs))]
+    cox_df = pd.DataFrame(np.vstack([cox_hr, cox_p]).T)
+    cox_df.index = [cox_programs.keys()[i] for i in range(len(cox_programs))]
+    cox_df.columns = ["HR", "p-value"]
+    cox_df.sort_values(by="HR",ascending=False,inplace=True)
+    #print(cox_df)
+
+    hrs = []
+    for key in cox_programs.keys():
+        HR = cox_programs[key][0]
+        hrs.append(HR)
+
+    # Another survival analysis ???
+    srv = survival_df_mmrf.copy()
+
+    state_members = [states[i] for i in range(len(states)) if len(states[i]) >= 9]
+    sufficient_states = [i for i in range(len(states)) if len(states[i]) >= 9]
+    state_survival = pd.DataFrame(np.zeros((len(state_members), srv.shape[0])))
+    state_survival.index = sufficient_states
+    state_survival.columns = srv.index
+
+    for ix in range(len(sufficient_states)):
+        sm = list(set(state_members[ix])&set(srv.index))
+        state_survival.loc[sufficient_states[ix],sm] = 1
+
+    cox_states = miner.parallelMemberSurvivalAnalysis(membershipDf=state_survival,
+                                                      numCores=5,
+                                                      survivalPath="",
+                                                      survivalData=srv)
+
+    cox_hr = [cox_states[i][0] for i in cox_states.keys()]
+    cox_p = [cox_states[i][1] for i in cox_states.keys()]
+    cox_df = pd.DataFrame(np.vstack([cox_hr, cox_p]).T)
+    cox_df.index = cox_states.keys()
+    cox_df.columns = ["HR","p-value"]
+    cox_df.sort_values(by="HR", ascending=False, inplace=True)

@@ -8,7 +8,7 @@ DESCRIPTION = 'Mechanistic Inference of Non-edge Relationships'
 LICENSE = 'LGPL V3'
 URI = 'https://github.com/baliga-lab/miner'
 AUTHOR = 'Baliga Lab, Institute for Systems Biology'
-VERSION = '1.0.4'
+VERSION = '1.0.5'
 
 KEYWORDS = ["isb", "miner", "mechanistic", "inference", "network", "gene", "regulatory", "biological"]
 
@@ -29,7 +29,7 @@ CLASSIFIERS = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Software Development :: Libraries :: Python Modules"
     ]
-INSTALL_REQUIRES = ['numpy', 'scipy', 'pandas', 'sklearn', 'matplotlib']
+INSTALL_REQUIRES = ['numpy', 'scipy', 'pandas', 'sklearn', 'matplotlib', 'seaborn', 'lifelines']
 
 if __name__ == '__main__':
     setup(name=NAME, description=DESCRIPTION,
@@ -46,4 +46,4 @@ if __name__ == '__main__':
           classifiers=CLASSIFIERS,
           install_requires=INSTALL_REQUIRES,
           scripts=['bin/miner-coexpr', 'bin/miner-enrichment', 'bin/miner-bcmembers',
-                   'bin/miner-subtypes'])
+                   'bin/miner-subtypes', 'bin/miner-survival'])

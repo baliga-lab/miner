@@ -10,14 +10,14 @@ import matplotlib.pyplot as plt
 
 from miner import miner
 
-DESCRIPTION = """miner-subtypes - MINER compute bicluster membership inference"""
+DESCRIPTION = """miner-subtypes - MINER compute sample subtypes"""
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=DESCRIPTION)
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
-    parser.add_argument('regulons', help="overexpressed members JSON file")
+    parser.add_argument('regulons', help="regulons JSON file")
     parser.add_argument('outdir', help="output directory")
     args = parser.parse_args()
 

@@ -17,3 +17,4 @@ from experimental data.
    miner-enrichment <miner_enrichment>
    miner-bcmembers <miner_bcmembers>
    miner-subtypes <miner_subtypes>
+   miner-survival <miner_survival>

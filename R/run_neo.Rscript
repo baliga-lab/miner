@@ -7,15 +7,33 @@ suppressMessages(library(cluster))
 suppressMessages(library(getopt))
 suppressMessages(library(doParallel))
 
+spec = matrix(c(
+  'indir',   'in',  1, "character",
+  'outdir',  'out', 1, "character"
+), byrow=TRUE, ncol=4)
+
+opt <- getopt(spec)
+if (is.null(opt$indir) || is.null(opt$outdir)) {
+    cat(getopt(spec, usage=TRUE))
+    q(status=1)
+}
+
 source('neoSourceCode.R')
 
-outputFolder <- "causal"
+outputFolder <- opt$outdir
 numCores <- 5
-sigRegFile <- "regStratAll.csv"
-bcTfFile <- "bcTfIncidence.csv" #bicluster rows, tfs columns
-eigengeneFile <- "eigengenes.csv"
-regExpFile <- "tfExpression.csv"
-mutationsFile <- "filteredMutations.csv"
+
+#sigRegFile <- "regStratAll.csv"
+#bcTfFile <- "bcTfIncidence.csv" #bicluster rows, tfs columns
+#eigengeneFile <- "eigengenes.csv"
+#regExpFile <- "tfExpression.csv"
+#mutationsFile <- "filteredMutations.csv"
+
+sigRegFile <- paste(opt$indir, "regStratAll.csv", sep='/')
+bcTfFile <- paste(opt$indir, "bcTfIncidence.csv", sep="/")
+eigengeneFile <- paste(opt$indir, "eigengenes.csv", sep="/")
+regExpFile <- paste(opt$indir, "tfExpression.csv", sep="/")
+mutationsFile <- paste(opt$indir, "filteredMutations.csv", sep="/")
 
 mutations <- read.csv(file=mutationsFile, as.is=T, header=T, row.names=1 )
 
@@ -45,8 +63,6 @@ ol1 <- intersect(intersect(colnames(be1),colnames(mutations)),colnames(regExp))
 cat(paste('\nsom_muts = ',nrow(mutations),'; regExp = ',nrow(regExp),'; be1 = ',nrow(be1),sep=''))
 d2 <- rbind(as.matrix(mutations[,ol1]), as.matrix(regExp[,ol1]), as.matrix(be1[,ol1]))
 d3 <- t(na.omit(t(d2)))
-
-
 
 registerDoParallel(cores=numCores)
 dir.create(outputFolder, showWarnings=F)
@@ -82,7 +98,7 @@ foreach(mut1=names(sigRegFC)) %dopar% {
                         '/sm.nonsilent_somatic.', mut2,
                         '_', reg1,'.csv', sep=''))
       print(paste('Finished ',reg1,'.',sep=''))
-    } else { 
+    } else {
       print(paste('  Error ',mut1,'.',sep=''))
     }
   }

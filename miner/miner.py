@@ -625,7 +625,7 @@ def principalDf(dict_,expressionData,regulons=None,subkey='genes',minNumberGenes
     setIndex = set(expressionData.index)
     
     if regulons is not None:
-        dict_ = regulonDictionary(regulons)
+        dict_, reg_df = regulonDictionary(regulons)
     for i in dict_.keys():
         if subkey is not None:
             genes = list(set(dict_[i][subkey])&setIndex)
@@ -1699,22 +1699,21 @@ def biclusterTfIncidence(mechanisticOutput,regulons=None):
     
     return bcTfIncidence
 
-def tfExpression(expressionData,motifPath=os.path.join("..","data","all_tfs_to_motifs.pkl")):
+def tfExpression(expressionData, motifPath=os.path.join("..","data","all_tfs_to_motifs.pkl")):
 
     allTfsToMotifs = read_pkl(motifPath)
     tfs = list(set(allTfsToMotifs.keys())&set(expressionData.index))
     tfExp = expressionData.loc[tfs,:]
     return tfExp
 
-def filterMutations(mutationPath,mutationFile,minNumMutations=None):
+def filterMutations(mutation_file, minNumMutations=None):
 
-    filePath = os.path.join(mutationPath,mutationFile)
-    mutations = pd.read_csv(filePath,index_col=0,header=0)
+    mutations = pd.read_csv(mutation_file, index_col=0, header=0)
     if minNumMutations is None:
         minNumMutations = min(np.ceil(mutations.shape[1]*0.01),4)
     freqMuts = list(mutations.index[np.where(np.sum(mutations,axis=1)>=minNumMutations)[0]])
     filteredMutations = mutations.loc[freqMuts,:]
-    
+
     return filteredMutations
 
 def mutationMatrix(mutationPath,mutationFiles,minNumMutations=None):
@@ -1723,7 +1722,7 @@ def mutationMatrix(mutationPath,mutationFiles,minNumMutations=None):
         mutationFiles = [mutationFiles]
     matrices = []
     for mutationFile in mutationFiles:
-        matrix = filterMutations(mutationPath=mutationPath,mutationFile=mutationFile,minNumMutations=minNumMutations)
+        matrix = filterMutations(os.path.join(mutationPath, mutationFile),minNumMutations=minNumMutations)
         matrices.append(matrix)
     filteredMutations = pd.concat(matrices,axis=0)
     
@@ -1762,46 +1761,38 @@ def mutationRegulatorStratification(mutationDf,tfDf,threshold=0.05,dictionary_=F
         return incidence, stratification
     return incidence
 
-def generateCausalInputs(expressionData,mechanisticOutput,coexpressionModules,saveFolder,mutationFile="filteredMutationsIA12.csv",regulon_dict=None):
-    import os
-    import numpy as np
-    
-    if not os.path.isdir(saveFolder):
-        os.mkdir(saveFolder)
-    
-    # set working directory to results folder
-    os.chdir(saveFolder)
-    # identify the data folder
-    os.chdir(os.path.join("..","data"))
-    dataFolder = os.getcwd()   
-    # write csv files for input into causal inference module
-    os.chdir(os.path.join("..","src"))
-    
-    #bcTfIncidence      
+def generateCausalInputs(expressionData,
+                         mechanisticOutput,
+                         coexpressionModules,
+                         saveFolder,
+                         dataFolder,
+                         mutationFile="filteredMutationsIA12.csv",
+                         regulon_dict=None):
     bcTfIncidence = biclusterTfIncidence(mechanisticOutput,regulons=regulon_dict)
     bcTfIncidence.to_csv(os.path.join(saveFolder,"bcTfIncidence.csv"))
-    
+
     #eigengenes
-    eigengenes = principalDf(coexpressionModules,expressionData,subkey=None,regulons=regulon_dict,minNumberGenes=1)
+    eigengenes = principalDf(coexpressionModules, expressionData, subkey=None,
+                             regulons=regulon_dict, minNumberGenes=1)
     eigengenes = eigengenes.T
     index = np.sort(np.array(eigengenes.index).astype(int))
     eigengenes = eigengenes.loc[index.astype(str),:]
     eigengenes.to_csv(os.path.join(saveFolder,"eigengenes.csv"))
-    
+
     #tfExpression
-    tfExp = tfExpression(expressionData)
+    tfExp = tfExpression(expressionData,
+                         motifPath=os.path.join(dataFolder, "all_tfs_to_motifs.pkl"))
     tfExp.to_csv(os.path.join(saveFolder,"tfExpression.csv"))
-    
+
     #filteredMutations:
-    filteredMutations = filterMutations(dataFolder,mutationFile)
-    filteredMutations.to_csv(os.path.join(saveFolder,"filteredMutations.csv"))    
-    
+    filteredMutations = filterMutations(mutationFile)
+    filteredMutations.to_csv(os.path.join(saveFolder,"filteredMutations.csv"))
+
     #regStratAll
-    tfStratMutations = mutationRegulatorStratification(filteredMutations,tfDf=tfExp,threshold=0.01)                
+    tfStratMutations = mutationRegulatorStratification(filteredMutations,tfDf=tfExp,threshold=0.01)
     keepers = list(set(np.arange(tfStratMutations.shape[1]))-set(np.where(np.sum(tfStratMutations,axis=0)==0)[0]))
-    tfStratMutations = tfStratMutations.iloc[:,keepers]    
+    tfStratMutations = tfStratMutations.iloc[:,keepers]
     tfStratMutations.to_csv(os.path.join(saveFolder,"regStratAll.csv"))
-    
     return
 
 def processCausalResults(causalPath=os.path.join("..","results","causal"),causalDictionary=False):

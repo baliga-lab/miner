@@ -1,5 +1,10 @@
 # miner
+
 mechanistic inference of node-edge relationships
+
+## Command line documentation
+
+https://baliga-lab.github.io/miner/
 
 # tutorial information
 A template with instructions and code for performing a miner analysis is provided in the miner/src directory. 

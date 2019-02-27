@@ -48,4 +48,4 @@ if __name__ == '__main__':
           scripts=['bin/miner-coexpr', 'bin/miner-enrichment',
                    'bin/miner-bcmembers', 'bin/miner-subtypes',
                    'bin/miner-survival', 'bin/miner-causalinf-pre',
-                   'bin/miner-causalinf-post'])
+                   'bin/miner-causalinf-post', 'bin/miner-neo'])

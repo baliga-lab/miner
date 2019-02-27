@@ -1,5 +1,3 @@
-#!/usr/bin/Rscript
-
 suppressMessages(library(methods))
 suppressMessages(library(MASS)) # standard, no need to install
 suppressMessages(library(class))        # standard, no need to install
@@ -18,16 +16,8 @@ if (is.null(opt$indir) || is.null(opt$outdir)) {
     q(status=1)
 }
 
-source('neoSourceCode.R')
-
 outputFolder <- opt$outdir
 numCores <- 5
-
-#sigRegFile <- "regStratAll.csv"
-#bcTfFile <- "bcTfIncidence.csv" #bicluster rows, tfs columns
-#eigengeneFile <- "eigengenes.csv"
-#regExpFile <- "tfExpression.csv"
-#mutationsFile <- "filteredMutations.csv"
 
 sigRegFile <- paste(opt$indir, "regStratAll.csv", sep='/')
 bcTfFile <- paste(opt$indir, "bcTfIncidence.csv", sep="/")
@@ -67,7 +57,8 @@ d3 <- t(na.omit(t(d2)))
 registerDoParallel(cores=numCores)
 dir.create(outputFolder, showWarnings=F)
 
-foreach(mut1=names(sigRegFC)) %dopar% {
+#foreach(mut1=names(sigRegFC)) %dopar% {
+for (mut1 in names(sigRegFC)) {
   # Make a place to store out the data from the analysis
   mut2 = mut1
   if(nchar(mut2)>75) {
@@ -91,7 +82,7 @@ foreach(mut1=names(sigRegFC)) %dopar% {
     }
     dMut1 = matrix(data=as.numeric(d3),nrow=dim(d3)[1],ncol=dim(d3)[2],byrow=F,dimnames=dimnames(d3))
     print(paste('  Starting ',mut1,' vs. ', reg1,' testing ', length(rownames(be1)), ' biclusters...', sep=''))
-    sm1 = try(single.marker.analysis(t(dMut1),1,2,3:length(rownames(dMut1))),silent=TRUE)
+    sm1 = try(single.marker.analysis(t(dMut1),1,2,3:length(rownames(dMut1)), impute.na=FALSE),silent=TRUE)
     if (!(class(sm1)=='try-error')) {
         write.csv(sm1[order(sm1[,6],decreasing=T),1:7],
                   paste(outputFolder, '/causal_', mut2,
@@ -99,7 +90,8 @@ foreach(mut1=names(sigRegFC)) %dopar% {
                         '_', reg1,'.csv', sep=''))
       print(paste('Finished ',reg1,'.',sep=''))
     } else {
-      print(paste('  Error ',mut1,'.',sep=''))
+        print(paste('  Error ',mut1,'.',sep=''))
+        print(sm1)
     }
   }
   print(paste('Finished ',mut1,'.',sep=''))

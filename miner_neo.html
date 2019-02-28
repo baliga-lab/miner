@@ -6,30 +6,23 @@
   <head>
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Search &#8212; isb-miner 1.0.2 documentation</title>
+    <title>The miner-neo tool &#8212; isb-miner 1.0.2 documentation</title>
     <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-    
     <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
     <script type="text/javascript" src="_static/jquery.js"></script>
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
     <script type="text/javascript" src="_static/language_data.js"></script>
-    <script type="text/javascript" src="_static/searchtools.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="#" />
-  <script type="text/javascript">
-    jQuery(function() { Search.loadIndex("searchindex.js"); });
-  </script>
-  
-  <script type="text/javascript" id="searchindexloader"></script>
-  
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="The miner-causalinf-post tool" href="miner_causalinf_post.html" />
+    <link rel="prev" title="The miner-causalinf-pre tool" href="miner_causalinf_pre.html" />
    
   <link rel="stylesheet" href="_static/custom.css" type="text/css" />
   
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
-
 
   </head><body>
   
@@ -41,29 +34,26 @@
 
           <div class="body" role="main">
             
-  <h1 id="search-documentation">Search</h1>
-  <div id="fallback" class="admonition warning">
-  <script type="text/javascript">$('#fallback').hide();</script>
-  <p>
-    Please activate JavaScript to enable the search
-    functionality.
-  </p>
-  </div>
-  <p>
-    From here you can search these documents. Enter your search
-    words into the box below and click "search". Note that the search
-    function will automatically search for all of the words. Pages
-    containing fewer words won't appear in the result list.
-  </p>
-  <form action="" method="get">
-    <input type="text" name="q" value="" />
-    <input type="submit" value="search" />
-    <span id="search-progress" style="padding-left: 10px"></span>
-  </form>
-  
-  <div id="search-results">
-  
-  </div>
+  <div class="section" id="the-miner-neo-tool">
+<h1>The miner-neo tool<a class="headerlink" href="#the-miner-neo-tool" title="Permalink to this headline">¶</a></h1>
+<p>This utility uses NEO to compute causal inference.</p>
+<p>You can see the tool’s available options when you enter <code class="docutils literal notranslate"><span class="pre">miner-neo</span></code>
+at the command prompt:</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>Usage: bin/miner-neo [-[-indir|in] &lt;character&gt;] [-[-outdir|out] &lt;character&gt;]
+</pre></div>
+</div>
+<div class="section" id="parameters-in-detail">
+<h2>Parameters in detail<a class="headerlink" href="#parameters-in-detail" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">miner-neo</span></code> expects at least these 2 arguments:</p>
+<blockquote>
+<div><ul class="simple">
+<li><strong>indir:</strong> the directory that was used as outupt directory for miner-causalinf-pre</li>
+<li><strong>outdir:</strong> the directory where the results will be stored</li>
+</ul>
+</div></blockquote>
+</div>
+</div>
+
 
           </div>
           
@@ -82,14 +72,17 @@
 
 <h3>Navigation</h3>
 <p class="caption"><span class="caption-text">Contents:</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="miner_coexpr.html">miner-coexpr</a></li>
 <li class="toctree-l1"><a class="reference internal" href="miner_enrichment.html">miner-enrichment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="miner_bcmembers.html">miner-bcmembers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="miner_subtypes.html">miner-subtypes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="miner_survival.html">miner-survival</a></li>
 <li class="toctree-l1"><a class="reference internal" href="miner_causalinf_pre.html">miner-causalinf-pre</a></li>
-<li class="toctree-l1"><a class="reference internal" href="miner_neo.html">miner-neo</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">miner-neo</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#parameters-in-detail">Parameters in detail</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="miner_causalinf_post.html">miner-causalinf-post</a></li>
 </ul>
 
@@ -97,9 +90,23 @@
 <h3>Related Topics</h3>
 <ul>
   <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="miner_causalinf_pre.html" title="previous chapter">The miner-causalinf-pre tool</a></li>
+      <li>Next: <a href="miner_causalinf_post.html" title="next chapter">The miner-causalinf-post tool</a></li>
   </ul></li>
 </ul>
 </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
 
 
 
@@ -119,6 +126,9 @@
       Powered by <a href="http://sphinx-doc.org/">Sphinx 1.8.4</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
+      |
+      <a href="_sources/miner_neo.rst.txt"
+          rel="nofollow">Page source</a>
     </div>
 
     

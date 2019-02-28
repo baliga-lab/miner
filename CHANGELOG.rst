@@ -1,11 +1,12 @@
 Changes
 =======
 
-Version 1.0.6, 2019/02/26
+Version 1.0.6, 2019/02/27
 -------------------------
 
   - miner-causalinf-pre
   - miner-causalinf-post
+  - miner-neo
 
 
 Version 1.0.5, 2019/02/25

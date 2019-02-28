@@ -158,7 +158,11 @@ if __name__ == '__main__':
 
     # overlay cluster labels. WW: Vega20 instead of tab20 because it does not exist
     # at my system
-    plt.scatter(tsne_df.iloc[:,0], tsne_df.iloc[:,1], cmap="Vega20", c=labels, alpha=0.65)
+    try:
+        plt.scatter(tsne_df.iloc[:,0], tsne_df.iloc[:,1], cmap="tab20", c=labels, alpha=0.65)
+    except:
+        plt.scatter(tsne_df.iloc[:,0], tsne_df.iloc[:,1], cmap="Vega20", c=labels, alpha=0.65)
+
     plt.savefig(os.path.join(args.outdir,"labeled_tsne_kmeans.pdf"), bbox_inches="tight")
 
     miner.plotStates(states_df, tsne_df, numCols=8, numRows=9,

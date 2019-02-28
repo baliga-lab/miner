@@ -17,8 +17,8 @@ if __name__ == '__main__':
 
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
+    parser.add_argument('eigengenes', help="eigengenes file used as NEO input")
     parser.add_argument('neoresults', help="NEO results directory")
-    parser.add_argument('neorundir', help="NEO run directory")
     parser.add_argument('datadir', help="data directory")
     parser.add_argument('outdir', help="output directory")
 
@@ -30,8 +30,8 @@ if __name__ == '__main__':
         sys.exit("identifier mapping file not found")
     if not os.path.exists(args.datadir):
         sys.exit("data directory not found")
-    if not os.path.exists(args.neorundir):
-        sys.exit("NEO run directory not found")
+    if not os.path.exists(args.eigengenes):
+        sys.exit("Eigengenes file not found")
     if not os.path.exists(args.neoresults):
         sys.exit("NEO results directory not found")
 
@@ -55,8 +55,7 @@ if __name__ == '__main__':
     tf_exp = miner.tfExpression(exp_data, motifPath=os.path.join(args.datadir, "all_tfs_to_motifs.pkl"))
 
     # load eigengenes matrix for use in postprocessing
-    eigengenes = pd.read_csv(os.path.join(args.neorundir, "eigengenes.csv"),
-                             index_col=0, header=0)
+    eigengenes = pd.read_csv(args.eigengenes, index_col=0, header=0)
 
     # generate p values for all network edges for use in filtering
     postprocessed_causal_analysis = miner.postProcessCausalResults(preprocessed_causal_results,

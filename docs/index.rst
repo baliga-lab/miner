@@ -18,3 +18,6 @@ from experimental data.
    miner-bcmembers <miner_bcmembers>
    miner-subtypes <miner_subtypes>
    miner-survival <miner_survival>
+   miner-causalinf-pre <miner_causalinf_pre>
+   miner-neo <miner_neo>
+   miner-causalinf-post <miner_causalinf_post>

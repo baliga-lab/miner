@@ -9,7 +9,7 @@ import os
 
 from miner import miner
 
-DESCRIPTION = """miner-causalinf - MINER compute causal inference"""
+DESCRIPTION = """miner-causalinf-post - MINER post-compute causal inference"""
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,

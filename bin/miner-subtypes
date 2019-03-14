@@ -59,10 +59,10 @@ if __name__ == '__main__':
                                               "similarityMatrix_regulons.pdf"))
 
 
-    centroid_clusters, centroid_matrix = miner.centroids(initial_classes,
-                                                         sample_matrix,
-                                                         f1Threshold = 0.1,
-                                                         returnCentroids=True) #0.3
+    centroid_clusters, centroid_matrix = miner.centroidExpansion(initial_classes,
+                                                                 sample_matrix,
+                                                                 f1Threshold = 0.1,
+                                                                 returnCentroids=True) #0.3
 
     centroid_matrix.to_csv(os.path.join(args.outdir, "centroids.csv"))
     unmapped = list(sample_matrix.columns[np.where(sample_matrix.sum(axis=0)==0)[0]])
@@ -120,10 +120,10 @@ if __name__ == '__main__':
                                 (".").join([tp,"txt"])),
                    transcriptional_programs[tp], fmt="%1.50s")
 
-    states_df = miner.stateProjection(df=ordered_dm, programs=program_list,
-                                      states=states,
-                                      stateThreshold=0.65,
-                                      saveFile=os.path.join(args.outdir,"transcriptional_programs_vs_samples.pdf"))
+    states_df = miner.reduceModules(df=ordered_dm, programs=program_list,
+                                    states=states,
+                                    stateThreshold=0.65,
+                                    saveFile=os.path.join(args.outdir,"transcriptional_programs_vs_samples.pdf"))
     programs_vs_states = miner.programsVsStates(states_df, states,
                                                 filename=os.path.join(args.outdir,
                                                                       "programs_vs_states.pdf"))

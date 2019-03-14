@@ -51,10 +51,10 @@ if __name__ == '__main__':
     # From subtypes
     similarity_clusters = miner.f1Decomposition(sample_dictionary, thresholdSFM=0.1)
     initial_classes = [i for i in similarity_clusters if len(i) > 4]
-    centroid_clusters, centroid_matrix = miner.centroids(initial_classes,
-                                                         sample_matrix,
-                                                         f1Threshold=0.1,
-                                                         returnCentroids=True)
+    centroid_clusters, centroid_matrix = miner.centroidExpansion(initial_classes,
+                                                                 sample_matrix,
+                                                                 f1Threshold=0.1,
+                                                                 returnCentroids=True)
     mapped_clusters = miner.mapExpressionToNetwork(centroid_matrix, sample_matrix,
                                                    threshold = 0.05)
     ordered_overexpressed_members = miner.orderMembership(centroid_matrix,
@@ -87,9 +87,9 @@ if __name__ == '__main__':
                                                                                regulon_modules)
     program_list = [program_regulons[("").join(["TP",str(i)])]
                     for i in range(len(program_regulons))]
-    states_df = miner.stateProjection(df=ordered_dm, programs=program_list,
-                                      states=states, stateThreshold=0.65,
-                                      saveFile=os.path.join(args.outdir, "transcriptional_programs_vs_samples.pdf"))
+    states_df = miner.reduceModules(df=ordered_dm, programs=program_list,
+                                    states=states, stateThreshold=0.65,
+                                    saveFile=os.path.join(args.outdir, "transcriptional_programs_vs_samples.pdf"))
 
     # Survival stuff comes here
     survival_mmrf = pd.read_csv(args.survfile, index_col=0, header=0)

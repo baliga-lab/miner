@@ -111,6 +111,32 @@ def identifierConversion(expressionData,conversionTable=os.path.join("..","data"
     
     return convertedData, conversionTable
 
+def transformFPKM(expressionData,minSamplesAboveMedian=0.5):
+
+    median = np.median(np.median(expressionData,axis=1))
+    expDataCopy = expressionData.copy()
+    expDataCopy[expDataCopy<median]=0
+    expDataCopy[expDataCopy>0]=1
+    cnz = np.count_nonzero(expDataCopy,axis=1)
+    keepers = np.where(cnz>=int(0.5*expDataCopy.shape[1]))[0]
+    median_filtered_genes = expressionData.index[keepers]
+
+    expDataFiltered = expressionData.loc[median_filtered_genes,:]
+    median = np.median(np.median(expDataFiltered,axis=1))
+    expDataCopy = expDataFiltered.copy()
+    expDataCopy[expDataCopy<median]=0
+    expDataCopy[expDataCopy>0]=1
+    cnz = np.count_nonzero(expDataCopy,axis=1)
+    keepers = np.where(cnz>=int(minSamplesAboveMedian*expDataCopy.shape[1]))[0]
+    median_filtered_genes = expDataFiltered.index[keepers]
+    
+    expressionDataHighExp = expressionData.loc[median_filtered_genes,:]
+    finalExpData = pd.DataFrame(np.log2(expressionDataHighExp+1))
+    finalExpData.index = expressionDataHighExp.index
+    finalExpData.columns = expressionDataHighExp.columns
+    
+    return finalExpData
+
 def zscore(expressionData):
     zero = np.percentile(expressionData,0)
     meanCheck = np.mean(expressionData[expressionData>zero].mean(axis=1,skipna=True))
@@ -509,12 +535,12 @@ def filterCoexpressionDict(coexpressionDict,clusterScores,threshold=0.01):
     filteredDict = {i:coexpressionDict[keys[i]] for i in range(len(coexpressionDict))}
     return filteredDict
 
-def biclusterMembershipDictionary(revisedClusters,background,label=2):
+def biclusterMembershipDictionary(revisedClusters,background,label=2,p=0.05):
 
     if label == "excluded":
         members = {}
         for key in revisedClusters.keys():
-            assignments = assignMembership(revisedClusters[key],background)
+            assignments = assignMembership(revisedClusters[key],background,p=p)
             nonMembers = np.array([i for i in range(len(assignments)) if len(assignments[i])==0])
             if len(nonMembers) == 0:
                 members[key] = []
@@ -526,7 +552,7 @@ def biclusterMembershipDictionary(revisedClusters,background,label=2):
     if label == "included":
         members = {}
         for key in revisedClusters.keys():
-            assignments = assignMembership(revisedClusters[key],background)
+            assignments = assignMembership(revisedClusters[key],background,p=p)
             included = np.array([i for i in range(len(assignments)) if len(assignments[i])!=0])
             if len(included) == 0:
                 members[key] = []
@@ -537,7 +563,7 @@ def biclusterMembershipDictionary(revisedClusters,background,label=2):
     
     members = {}
     for key in revisedClusters.keys():
-        assignments = assignMembership(revisedClusters[key],background)
+        assignments = assignMembership(revisedClusters[key],background,p=p)
         overExpMembers = np.array([i for i in range(len(assignments)) if label in assignments[i]])
         if len(overExpMembers) ==0:
             members[key] = []
@@ -625,7 +651,7 @@ def principalDf(dict_,expressionData,regulons=None,subkey='genes',minNumberGenes
     setIndex = set(expressionData.index)
     
     if regulons is not None:
-        dict_, reg_df = regulonDictionary(regulons)
+        dict_, df = regulonDictionary(regulons)
     for i in dict_.keys():
         if subkey is not None:
             genes = list(set(dict_[i][subkey])&setIndex)
@@ -961,7 +987,7 @@ def plotSimilarity(similarityMatrix,orderedSamples,vmin=0,vmax=0.5,title="Simila
     plt.xlabel(xlabel,FontSize=fontsize)
     plt.ylabel(ylabel,FontSize=fontsize)
     if savefig is not None:
-        plt.savefig(savefig)
+        plt.savefig(savefig,bbox_inches="tight")
     return
 
 def f1(vector1,vector2):
@@ -979,7 +1005,7 @@ def f1(vector1,vector2):
     
     return F1
 
-def centroids(classes,sampleMatrix,f1Threshold = 0.3,returnCentroids=None):
+def centroidExpansion(classes,sampleMatrix,f1Threshold = 0.3,returnCentroids=None):
     centroids = []
     for i in range(len(classes)):
         clusterComponents = sampleMatrix.loc[:,classes[i]]
@@ -1013,6 +1039,17 @@ def centroids(classes,sampleMatrix,f1Threshold = 0.3,returnCentroids=None):
         return centroidClusters, centroidMatrix
         
     return centroidClusters
+
+def getCentroids(classes,sampleMatrix):
+    centroids = []
+    for i in range(len(classes)):
+        clusterComponents = sampleMatrix.loc[:,classes[i]]
+        class1 = np.mean(clusterComponents,axis=1)
+        centroid = pd.DataFrame(class1)
+        centroid.columns = [i]
+        centroid.index = sampleMatrix.index
+        centroids.append(centroid)
+    return pd.concat(centroids,axis=1)
 
 def mapExpressionToNetwork(centroidMatrix,membershipMatrix,threshold = 0.05):
     
@@ -1179,6 +1216,15 @@ def mosaic(dfr,clusterList,minClusterSize_x=4,minClusterSize_y=5,allow_singleton
     x_clusters = []
     for c in range(len(clusterList)):
         patients = clusterList[c]
+        if len(patients)<= minClusterSize_x:
+            x_clusters.append(patients)
+            continue
+        
+        if allow_singletons is not True:
+            if len(patients)<= 2*minClusterSize_x:
+                x_clusters.append(patients)
+                continue            
+        
         if len(patients) == 0:
             continue
         df = dfr.loc[order_y,patients].T
@@ -1215,15 +1261,16 @@ def mosaic(dfr,clusterList,minClusterSize_x=4,minClusterSize_y=5,allow_singleton
         elif len(sil_scores) == 0:
             x_clusters.append(patients)
     try:
-        combine_x = []
-        for x in range(len(x_clusters)):
-            if type(x_clusters[x][0]) is not str:
-                for k in range(len(x_clusters[x])):
-                    combine_x.append(x_clusters[x][k])
-            else:
-                combine_x.append(x_clusters[x])
+        micro_states = []
+        for i in range(len(x_clusters)):
+            if len(x_clusters[i])>0:
+                if type(x_clusters[i][0]) is not str:
+                    for j in range(len(x_clusters[i])):
+                        micro_states.append(x_clusters[i][j])
+                elif type(x_clusters[i][0]) is str:
+                    micro_states.append(x_clusters[i])
                                
-        order_x = np.hstack(combine_x)
+        order_x = np.hstack(micro_states)
         fig = plt.figure(figsize=(7,7))
         ax = fig.gca()
         ax.imshow(dfr.loc[order_y,order_x],cmap="bwr",vmin=-1,vmax=1)
@@ -1232,9 +1279,9 @@ def mosaic(dfr,clusterList,minClusterSize_x=4,minClusterSize_y=5,allow_singleton
         ax.set_ylabel("Regulons",FontSize=14)
         ax.set_xlabel("Samples",FontSize=14)
         if saveFile is not None:
-            plt.savefig(saveFile)
+            plt.savefig(saveFile,bbox_inches="tight")
             
-        return y_clusters, combine_x
+        return y_clusters, micro_states
     
     except:
         pass
@@ -1247,19 +1294,13 @@ def transcriptionalPrograms(programs,reference_dictionary):
     p_stack = []
     programs_flattened = np.array(programs).flatten()
     for i in range(len(programs_flattened)):
-        try:
-            if type(programs_flattened[i][0])==pd.core.indexes.base.Index:
-                for j in range(len(programs_flattened[i])):
-                    p_stack.append(list(programs[i][j]))        
-            else:
-                p_stack.append(list(programs[i]))
-        except:
-            ## WW: on my Pandas version (0.23.4) there will be an exception due
-            ## to pandas.core.indexes not existing. This will do a hopefully
-            ## safe fallback
+        if len(np.hstack(programs_flattened[i]))>len(programs_flattened[i]):
             for j in range(len(programs_flattened[i])):
-                p_stack.append(list(programs[i][j]))
-
+                p_stack.append(list(programs_flattened[i][j]))        
+        else:
+            p_stack.append(list(programs_flattened[i]))
+    
+    
     for j in range(len(p_stack)):
         key = ("").join(["TP",str(j)])
         regulonList = [i for i in p_stack[j]]
@@ -1268,7 +1309,7 @@ def transcriptionalPrograms(programs,reference_dictionary):
         transcriptionalPrograms[key] = list(set(np.hstack(tmp)))
     return transcriptionalPrograms, programRegulons
 
-def stateProjection(df,programs,states,stateThreshold=0.75,saveFile=None):
+def reduceModules(df,programs,states,stateThreshold=0.75,saveFile=None):
     
     df = df.loc[:,np.hstack(states)]
     statesDf = pd.DataFrame(np.zeros((len(programs),df.shape[1])))
@@ -1296,7 +1337,7 @@ def stateProjection(df,programs,states,stateThreshold=0.75,saveFile=None):
         ax.grid(False)
         ax.set_ylabel("Transcriptional programs",FontSize=14)
         ax.set_xlabel("Samples",FontSize=14)
-        plt.savefig(saveFile)
+        plt.savefig(saveFile,bbox_inches="tight")
         
     return statesDf
 
@@ -1318,13 +1359,22 @@ def programsVsStates(statesDf,states,filename=None):
     plt.ylabel("Transcriptional programs",FontSize=14)
     plt.xlabel("Transcriptional states",FontSize=14)
     if filename is not None:
-        plt.savefig(filename)
+        plt.savefig(filename,bbox_inches="tight")
 
     return pixel
 
 # =============================================================================
 # Functions used for cluster analysis
 # =============================================================================
+
+def getEigengenes(coexpressionModules,expressionData,regulon_dict=None,saveFolder=None):
+    eigengenes = principalDf(coexpressionModules,expressionData,subkey=None,regulons=regulon_dict,minNumberGenes=1)
+    eigengenes = eigengenes.T
+    index = np.sort(np.array(eigengenes.index).astype(int))
+    eigengenes = eigengenes.loc[index.astype(str),:]
+    if saveFolder is not None:
+        eigengenes.to_csv(os.path.join(saveFolder,"eigengenes.csv"))
+    return eigengenes
 
 def parallelEnrichment(task):
     partition = task[0]
@@ -1418,10 +1468,27 @@ def tsne(matrix,perplexity=100,n_components=2,n_iter=1000,plotOnly=True,plotColo
         
     return X_embedded
 
-def plotStates(statesDf,tsneDf,numCols=3,numRows=None,saveFile=None,size=10,aspect=1,scale=2):
+def tsneStateLabels(tsneDf,states):
+    labelsDf = pd.DataFrame(1000*np.ones(tsneDf.shape[0]))
+    labelsDf.index = tsneDf.index
+    labelsDf.columns = ["label"]
+
+    for i in range(len(states)):
+        tagged = states[i]
+        labelsDf.loc[tagged,"label"] = i
+    state_labels = np.array(labelsDf.iloc[:,0])  
+    return state_labels
+
+def plotStates(statesDf,tsneDf,numCols=None,numRows=None,saveFile=None,size=10,aspect=1,scale=2):
 
     if numRows is None:
-        numRows = int(np.ceil(float(statesDf.shape[0])/numCols))
+        if numCols is None:
+            numRows = int(round(np.sqrt(statesDf.shape[0])))
+            rat = np.floor(statesDf.shape[0]/float(numRows))
+            rem = statesDf.shape[0]-numRows*rat
+            numCols = int(rat+rem)
+        elif numCols is not None:
+            numRows = int(np.ceil(float(statesDf.shape[0])/numCols))
         
     fig = plt.figure(figsize=(scale*numRows,scale*numCols))
     for ix in range(statesDf.shape[0]):
@@ -1699,16 +1766,16 @@ def biclusterTfIncidence(mechanisticOutput,regulons=None):
     
     return bcTfIncidence
 
-def tfExpression(expressionData, motifPath=os.path.join("..","data","all_tfs_to_motifs.pkl")):
+def tfExpression(expressionData,motifPath=os.path.join("..","data","all_tfs_to_motifs.pkl")):
 
     allTfsToMotifs = read_pkl(motifPath)
     tfs = list(set(allTfsToMotifs.keys())&set(expressionData.index))
     tfExp = expressionData.loc[tfs,:]
     return tfExp
 
-def filterMutations(mutation_file, minNumMutations=None):
+def filterMutations(mutationFile,minNumMutations=None):
 
-    mutations = pd.read_csv(mutation_file, index_col=0, header=0)
+    mutations = pd.read_csv(mutationFile, index_col=0, header=0)
     if minNumMutations is None:
         minNumMutations = min(np.ceil(mutations.shape[1]*0.01),4)
     freqMuts = list(mutations.index[np.where(np.sum(mutations,axis=1)>=minNumMutations)[0]])
@@ -1772,8 +1839,7 @@ def generateCausalInputs(expressionData,
     bcTfIncidence.to_csv(os.path.join(saveFolder,"bcTfIncidence.csv"))
 
     #eigengenes
-    eigengenes = principalDf(coexpressionModules, expressionData, subkey=None,
-                             regulons=regulon_dict, minNumberGenes=1)
+    eigengenes = principalDf(coexpressionModules,expressionData,subkey=None,regulons=regulon_dict,minNumberGenes=1)
     eigengenes = eigengenes.T
     index = np.sort(np.array(eigengenes.index).astype(int))
     eigengenes = eigengenes.loc[index.astype(str),:]
@@ -1982,3 +2048,26 @@ def showCluster(expressionData,coexpressionModules,key):
     plt.xlabel("Patients",FontSize=14)
     plt.ylabel("Genes",FontSize=14)     
     return     
+
+def predictorThresholds(predictor_scores):
+    
+    pcts = np.percentile(np.array(predictor_scores.iloc[:,0]),[15,85])
+    if pcts[0] < 0:
+        lowCut = np.ceil(pcts[0])
+    if pcts[0] >= 0:
+        print("thresholds could not be inferred. Please define thresholds and try again.")
+    if pcts[1] < 0:
+        print("thresholds could not be inferred. Please define thresholds and try again.")
+    if pcts[1] >= 0:
+        highCut = np.floor(pcts[1])
+    
+    modLow = -1
+    modHigh = 1
+    
+    if lowCut >= -1:
+        modLow = lowCut/2.
+    if highCut <= 1:
+        modHigh = highCut/2.
+        
+    thresholds = [highCut,modHigh,modLow,lowCut]
+    return thresholds

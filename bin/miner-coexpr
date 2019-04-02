@@ -6,6 +6,7 @@ import numpy as np
 import json
 import sys
 import os
+import matplotlib.pyplot as plt
 
 from miner import miner
 
@@ -16,7 +17,7 @@ if __name__ == '__main__':
                                      description=DESCRIPTION)
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
-    parser.add_argument('outfile', help="output file")
+    parser.add_argument('outdir', help="output directory")
     parser.add_argument('-mg', '--mingenes', type=int, default=6, help="min number genes")
     parser.add_argument('-moxs', '--minoverexpsamp', type=int, default=4,
                         help="minimum overexpression samples")
@@ -33,9 +34,10 @@ if __name__ == '__main__':
     if not os.path.exists(args.mapfile):
         sys.exit("identifier mapping file not found")
 
-    exp_data = pd.read_csv(args.expfile, index_col=0, header=0)
-    exp_data, conv_table = miner.identifierConversion(exp_data, args.mapfile)
-    exp_data = miner.zscore(exp_data)
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
+
+    exp_data, conv_table = miner.preprocess(args.expfile, args.mapfile)
     init_clusters = miner.cluster(exp_data,
                                   minNumberGenes=args.mingenes,
                                   minNumberOverExpSamples=args.minoverexpsamp,
@@ -43,9 +45,28 @@ if __name__ == '__main__':
                                   random_state=args.randstate,
                                   overExpressionThreshold=args.overexpthresh)
 
-    # sort cluster list from largest to smallest
-    init_clusters.sort(key=lambda s: -len(s))
-
     revised_clusters = miner.reviseInitialClusters(init_clusters, exp_data)
-    with open(args.outfile, 'w') as out:
+    with open(os.path.join(args.outdir, "coexpressionDictionary.json"), 'w') as out:
         json.dump(revised_clusters, out)
+
+
+    # visualize first 10 clusters
+    plt.figure(figsize=(8,8))
+    plt.imshow(exp_data.loc[np.hstack([revised_clusters[i] for i in range(10)]),:],
+               aspect="auto", cmap="viridis", vmin=-1, vmax=1)
+    plt.grid(False)
+    plt.ylabel("Genes", FontSize=20)
+    plt.xlabel("Samples", FontSize=20)
+    plt.title("First 10 clusters", FontSize=20)
+
+    # report coverage
+    #print("Number of genes clustered: {:d}".format(len(set(np.hstack(initialClusters)))))
+    #print("Number of unique clusters: {:d}".format(len(revisedClusters)))
+
+    # plot histogram of the cluster size distribution
+    counts_ = plt.hist([len(revised_clusters[key]) for key in revised_clusters.keys()],
+                       bins=100)
+    plt.xlabel("Number of genes in cluster", FontSize=14)
+    plt.ylabel("Number of clusters", FontSize=14)
+    plt.savefig(os.path.join(args.outdir, "cluster_size_distribution.pdf"),
+                bbox_inches="tight")

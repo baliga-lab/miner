@@ -361,11 +361,11 @@ def correctBatchEffects(df):
         
     return zscoredExpression
 
-def preprocess(filename):
+def preprocess(filename, conversionTable):
     rawExpression = readFileToDf(filename)
     rawExpressionZeroFiltered = removeNullRows(rawExpression)
     zscoredExpression = correctBatchEffects(rawExpressionZeroFiltered)
-    expressionData, conversionTable = identifierConversion(zscoredExpression)
+    expressionData, conversionTable = identifierConversion(zscoredExpression, conversionTable)
     return expressionData, conversionTable
 
 # =============================================================================

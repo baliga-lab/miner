@@ -17,10 +17,10 @@ if __name__ == '__main__':
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
     parser.add_argument('outfile', help="output file")
-    parser.add_argument('-mg', '--mingenes', type=int, default=8, help="min number genes")
+    parser.add_argument('-mg', '--mingenes', type=int, default=6, help="min number genes")
     parser.add_argument('-moxs', '--minoverexpsamp', type=int, default=4,
                         help="minimum overexpression samples")
-    parser.add_argument('-mx', '--maxexclusion', type=float, default=0.275,
+    parser.add_argument('-mx', '--maxexclusion', type=float, default=0.5,
                         help="maximum samples excluded")
     parser.add_argument('-rs', '--randstate', type=float, default=12,
                         help="random state")

@@ -27,9 +27,7 @@ if __name__ == '__main__':
 
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
-    exp_data = pd.read_csv(args.expfile, index_col=0, header=0)
-    exp_data, conv_table = miner.identifierConversion(exp_data, args.mapfile)
-    exp_data = miner.zscore(exp_data)
+    exp_data, conv_table = miner.preprocess(args.expfile, args.mapfile)
     bkgd = miner.backgroundDf(exp_data)
 
     with open(args.regulons) as infile:

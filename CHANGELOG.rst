@@ -1,6 +1,12 @@
 Changes
 =======
 
+Version 1.0.8, 2019/04/03
+-------------------------
+
+  - integrated latest stable updates from MINER
+  - replaced miner-enrichment with miner-mechinf
+
 Version 1.0.7, 2019/03/14
 -------------------------
 

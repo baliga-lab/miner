@@ -45,7 +45,8 @@ if __name__ == '__main__':
           zip_safe=False,
           classifiers=CLASSIFIERS,
           install_requires=INSTALL_REQUIRES,
-          scripts=['bin/miner-coexpr', 'bin/miner-enrichment',
+          scripts=['bin/miner-coexpr', 'bin/miner-mechinf',
+                   'bin/miner-enrichment',
                    'bin/miner-bcmembers', 'bin/miner-subtypes',
                    'bin/miner-survival', 'bin/miner-causalinf-pre',
                    'bin/miner-causalinf-post', 'bin/miner-neo'])

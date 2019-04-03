@@ -14,14 +14,14 @@ at the command prompt:
 
     usage: miner-coexpr [-h] [-mg MINGENES] [-moxs MINOVEREXPSAMP]
                         [-mx MAXEXCLUSION] [-rs RANDSTATE] [-oxt OVEREXPTHRESH]
-                        expfile mapfile outfile
+                        expfile mapfile outdir
 
     miner-coexpr - MINER cluster expression data.
 
     positional arguments:
       expfile               input matrix
       mapfile               identifier mapping file
-      outfile               output file
+      outdir                output directory
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -44,7 +44,7 @@ Parameters in detail
 
   * **expfile:** The gene expression file a matrix in csv format.
   * **mapfile:** The gene identifier map file.
-  * **outfile:** The path to the JSON output file to be generated.
+  * **outdir:** The path to the output directory
 
 In addition, you can specify the following optional arguments:
 

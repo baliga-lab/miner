@@ -10,6 +10,7 @@ import os
 from miner import miner
 
 DESCRIPTION = """miner-causalinf-pre - MINER pre-compute causal inference"""
+MIN_REGULON_GENES = 5
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -19,7 +20,7 @@ if __name__ == '__main__':
     parser.add_argument('mapfile', help="identifier mapping file")
     parser.add_argument('mechout', help="mechanistic output JSON file")
     parser.add_argument('coexp', help="coexpression modules JSON file")
-    parser.add_argument('regulons', help="regulons JSON file")
+    parser.add_argument('coreg', help="coregulation modules JSON file")
     parser.add_argument('mutation', help="mutations csv file")
     parser.add_argument('datadir', help="data directory")
 
@@ -39,16 +40,16 @@ if __name__ == '__main__':
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
 
-    exp_data = pd.read_csv(args.expfile, index_col=0, header=0)
-    exp_data, conv_table = miner.identifierConversion(exp_data, args.mapfile)
-    exp_data = miner.zscore(exp_data)
+    exp_data, conv_table = miner.preprocess(args.expfile, args.mapfile)
 
     with open(args.mechout) as infile:
         mechanistic_output= json.load(infile)
     with open(args.coexp) as infile:
         coexpression_modules = json.load(infile)
-    with open(args.regulons) as infile:
-        regulons = json.load(infile)
+    with open(args.coreg) as infile:
+        coregulation_modules = json.load(infile)
+        regulons = miner.getRegulons(coregulation_modules, minNumberGenes=MIN_REGULON_GENES,
+                                     freqThreshold=0.333)
 
     # NOTE when copying Matt's file that it has some hardcoded paths, that I
     # had to eliminate for using it. Mostly the data folder, which I replaced

@@ -21,7 +21,7 @@ at the command prompt:
       mapfile     identifier mapping file
       mechout     mechanistic output JSON file
       coexp       coexpression modules JSON file
-      regulons    regulons JSON file
+      coreg       coregulation modules JSON file
       mutation    mutations csv file
       datadir     data directory
       outdir      output directory

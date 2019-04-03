@@ -35,7 +35,6 @@ if __name__ == '__main__':
 
     with open(args.regulons) as infile:
         regulon_modules = json.load(infile)
-    #regulon_modules, regulon_df = miner.regulonDictionary(regulons)
 
     bkgd = miner.backgroundDf(exp_data)
     overexpressed_members = miner.biclusterMembershipDictionary(regulon_modules,

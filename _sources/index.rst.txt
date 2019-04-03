@@ -14,7 +14,7 @@ from experimental data.
    :caption: Contents:
 
    miner-coexpr <miner_coexpr>
-   miner-enrichment <miner_enrichment>
+   miner-mechinf <miner_mechinf>
    miner-bcmembers <miner_bcmembers>
    miner-subtypes <miner_subtypes>
    miner-survival <miner_survival>

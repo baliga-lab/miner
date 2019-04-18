@@ -16,7 +16,7 @@ if __name__ == '__main__':
                                      description=DESCRIPTION)
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
-    parser.add_argument('regulons', help="regulon JSON file")
+    parser.add_argument('regulons', help="regulons.json file from miner-mechinf")
     parser.add_argument('outdir', help="output directory")
 
     args = parser.parse_args()

@@ -18,7 +18,7 @@ if __name__ == '__main__':
                                      description=DESCRIPTION)
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
-    parser.add_argument('revclusters', help="revised clusters JSON file")
+    parser.add_argument('coexprdict', help="coexpressionDictionary.json file from miner-coexpr")
     parser.add_argument('datadir', help="data directory")
     parser.add_argument('outdir', help="output directory")
     parser.add_argument('-mc', '--mincorr', type=float, default=0.2,
@@ -30,7 +30,7 @@ if __name__ == '__main__':
         sys.exit("expression file not found")
     if not os.path.exists(args.mapfile):
         sys.exit("identifier mapping file not found")
-    if not os.path.exists(args.revclusters):
+    if not os.path.exists(args.coexprdict):
         sys.exit("revised clusters file not found")
     if not os.path.exists(args.datadir):
         sys.exit("data directory not found")
@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
     exp_data, conv_table = miner.preprocess(args.expfile, args.mapfile)
 
-    with open(args.revclusters) as infile:
+    with open(args.coexprdict) as infile:
         revised_clusters = json.load(infile)
 
     # get first principal component axes of clusters

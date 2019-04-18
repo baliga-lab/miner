@@ -11,14 +11,14 @@ at the command prompt:
 ::
 
     usage: miner-mechinf [-h] [-mc MINCORR]
-                         expfile mapfile revclusters datadir outdir
+                         expfile mapfile coexprdict datadir outdir
 
     miner-mechinf - MINER compute mechanistic inference
 
     positional arguments:
       expfile               input matrix
       mapfile               identifier mapping file
-      revclusters           revised clusters JSON file
+      coexprdict            coexpressionDictionary.json file from miner-coexpr
       datadir               data directory
       outdir                output directory
 
@@ -35,10 +35,25 @@ Parameters in detail
 
   * **expfile:** The gene expression file a matrix in csv format.
   * **mapfile:** The gene identifier map file.
-  * **revclusters:** The path to the revised clusters JSON file
+  * **coexprdict:** The path coexpressionDictionary.json file from the miner-coexpr tool
   * **datadir:** The path to the data directory
   * **outdir:** The path to the output directory
 
 In addition, you can specify the following optional arguments:
 
   * ``--mincorr`` or ``--mc``: the minimum correlation value.
+
+Output in detail
+----------------
+
+After successful completion there will be the following files in the output directory
+
+
+  * ``regulons.json`` - use this file in subsequent tools
+  * ``coexpressionDictionary_annotated.json``
+  * ``mechanisticOutput.json``
+  * ``coexpressionModules_annotated.json``
+  * ``regulons_annotated.csv``
+  * ``coexpressionModules.json``
+  * ``regulons_annotated.json``
+  * ``coregulationModules.json``

@@ -18,12 +18,11 @@ if __name__ == '__main__':
 
     parser.add_argument('expfile', help="input matrix")
     parser.add_argument('mapfile', help="identifier mapping file")
-    parser.add_argument('mechout', help="mechanistic output JSON file")
-    parser.add_argument('coexp', help="coexpression modules JSON file")
-    parser.add_argument('coreg', help="coregulation modules JSON file")
+    parser.add_argument('mechout', help="mechanisticOutput.json file from miner-mechinf")
+    parser.add_argument('coexp', help="coexpressionModules.json file from miner-mechinf")
+    parser.add_argument('coreg', help="coregulationModules.json file from miner-mechinf")
     parser.add_argument('mutation', help="mutations csv file")
     parser.add_argument('datadir', help="data directory")
-
     parser.add_argument('outdir', help="output directory")
 
     args = parser.parse_args()

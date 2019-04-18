@@ -18,5 +18,5 @@ Parameters in detail
 
 ``miner-neo`` expects at least these 2 arguments:
 
-  * **indir:** the directory that was used as outupt directory for miner-causalinf-pre
+  * **indir:** the directory that was used as output directory for miner-causalinf-pre
   * **outdir:** the directory where the results will be stored

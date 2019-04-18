@@ -30,7 +30,7 @@ at the command prompt:
       -moxs MINOVEREXPSAMP, --minoverexpsamp MINOVEREXPSAMP
                             minimum overexpression samples
       -mx MAXEXCLUSION, --maxexclusion MAXEXCLUSION
-                            maximum exclusion
+                            maximum samples excluded
       -rs RANDSTATE, --randstate RANDSTATE
                             random state
       -oxt OVEREXPTHRESH, --overexpthresh OVEREXPTHRESH
@@ -53,3 +53,12 @@ In addition, you can specify the following optional arguments:
   * ``--maxexclusion`` or ``-mx``: maximum exclusion
   * ``--randstate`` or ``-rs``: random state
   * ``--overexpthresh`` or ``-oxt``: overexpression threshold
+
+
+Output in detail
+----------------
+
+After successful completion there will be the following files in the output directory
+
+  * ``cluster_size_distribution.pdf``: a plot of the cluster size distribution for visual verification
+  * ``coexpressionDictionary.json``: this file is used in subsequent stages

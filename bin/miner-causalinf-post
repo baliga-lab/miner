@@ -7,6 +7,8 @@ import json
 import sys
 import os
 
+import matplotlib
+matplotlib.use('Agg')
 from miner import miner
 
 DESCRIPTION = """miner-causalinf-post - MINER post-compute causal inference"""

@@ -6,6 +6,7 @@ import numpy as np
 import json
 import sys
 import os
+import time
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -40,6 +41,7 @@ if __name__ == '__main__':
         os.makedirs(args.outdir)
 
     exp_data, conv_table = miner.preprocess(args.expfile, args.mapfile)
+    t1 = time.time()
     init_clusters = miner.cluster(exp_data,
                                   minNumberGenes=args.mingenes,
                                   minNumberOverExpSamples=args.minoverexpsamp,
@@ -51,6 +53,40 @@ if __name__ == '__main__':
     with open(os.path.join(args.outdir, "coexpressionDictionary.json"), 'w') as out:
         json.dump(revised_clusters, out)
 
+
+    # retrieve first three clusters for visual inspection
+    first_clusters = np.hstack([revised_clusters[i] for i in np.arange(3).astype(str)])
+
+    # visualize background expression
+    plt.figure(figsize=(8,4))
+    plt.imshow(exp_data.loc[np.random.choice(exp_data.index, len(first_clusters), replace=False),:],
+               aspect="auto", cmap="viridis", vmin=-1,vmax=1)
+    plt.grid(False)
+    plt.ylabel("Genes",FontSize=20)
+    plt.xlabel("Samples",FontSize=20)
+    plt.title("Random selection of genes",FontSize=20)
+
+    plt.savefig(os.path.join(args.outdir, "background_expression.pdf"),
+                bbox_inches="tight")
+
+    # visualize first 10 clusters
+    plt.figure(figsize=(8,4))
+    plt.imshow(exp_data.loc[first_clusters,:], aspect="auto", cmap="viridis", vmin=-1, vmax=1)
+    plt.grid(False)
+    plt.ylabel("Genes", FontSize=20)
+    plt.xlabel("Samples", FontSize=20)
+    plt.title("First 3 clusters", FontSize=20)
+    plt.savefig(os.path.join(args.outdir, "first_clusters.pdf"),
+                bbox_inches="tight")
+
+    # report coverage
+    print("Number of genes clustered: {:d}".format(len(set(np.hstack(init_clusters)))))
+    print("Number of unique clusters: {:d}".format(len(revised_clusters)))
+
+    t2 = time.time()
+    print("Completed clustering module in {:.2f} minutes".format((t2-t1)/60.))
+
+    """
 
     # visualize first 10 clusters
     plt.figure(figsize=(8,8))
@@ -72,3 +108,4 @@ if __name__ == '__main__':
     plt.ylabel("Number of clusters", FontSize=14)
     plt.savefig(os.path.join(args.outdir, "cluster_size_distribution.pdf"),
                 bbox_inches="tight")
+    """

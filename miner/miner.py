@@ -26,6 +26,14 @@ def read_pkl(input_file):
         dict_ = pickle.load(f)        
     return dict_
 
+def write_pkl(dictionary,output_file):
+    import pickle
+    output = open(output_file, 'wb')
+    pickle.dump(dictionary, output)
+    output.close()
+    
+    return
+
 def read_json(filename):
     import json    
     with open(filename) as data:
@@ -52,6 +60,27 @@ def readFileToDf(filename):
         if shape[1] == 0:
             df = pd.read_csv(filename,index_col=0,header=0)    
     return df
+
+def fileToReferenceDictionary(filename,dictionaryName,index_col=0):
+    read_reference_db = pd.read_csv(filename,index_col=0,header=0)
+    
+    if list(read_reference_db.iloc[:,0]) == range(len(read_reference_db.iloc[:,0])):
+        read_reference_db = read_reference_db.iloc[:,1:]
+        print("deleted")
+    read_reference_db.index = read_reference_db.iloc[:,0]
+    read_reference_db = read_reference_db.iloc[:,1:]
+    read_reference_db.head()
+    
+    reference_dic = {}
+    for key in list(set(read_reference_db.index)):
+        tmp_df = read_reference_db.loc[key,:]
+        if type(tmp_df) is not pd.core.frame.DataFrame:
+            tmp_df = pd.DataFrame(tmp_df)
+        reference_dic[key] = list(tmp_df.iloc[:,0])
+    
+    write_pkl(reference_dic,dictionaryName)
+
+    return reference_dic
 
 # =============================================================================
 # Functions used for pre-processing data
@@ -151,6 +180,25 @@ def readExpressionFromGZipFiles(directory):
 
     expressionData = pd.concat(sample_dfs,axis=1)
     return expressionData
+
+def readCausalFiles(directory):
+
+    rootDir = directory
+    sample_dfs = []
+    for dirName, subdirList, fileList in os.walk(rootDir):
+        for fname in fileList:
+            #print('\t%s' % fname)
+            extension = fname.split(".")[-1]
+            if extension == 'csv':
+                path = os.path.join(rootDir,dirName,fname)
+                df = pd.read_csv(path, index_col=0,header=0)
+                df.index = np.array(df.index).astype(str)
+                sample_dfs.append(df)
+
+    causalData = pd.concat(sample_dfs,axis=0)
+    renamed = [("-").join(["R",str(name)]) for name in causalData.Regulon]
+    causalData.Regulon = renamed
+    return causalData
 
 def entropy(vector):
     
@@ -361,11 +409,11 @@ def correctBatchEffects(df):
         
     return zscoredExpression
 
-def preprocess(filename, conversionTable):
+def preprocess(filename, conversionTablePath):
     rawExpression = readFileToDf(filename)
     rawExpressionZeroFiltered = removeNullRows(rawExpression)
     zscoredExpression = correctBatchEffects(rawExpressionZeroFiltered)
-    expressionData, conversionTable = identifierConversion(zscoredExpression, conversionTable)
+    expressionData, conversionTable = identifierConversion(zscoredExpression, conversionTablePath)
     return expressionData, conversionTable
 
 # =============================================================================
@@ -735,58 +783,21 @@ def clusterScore(membership,pMembership=0.05):
     N = len(membership)
     return 1-stats.binom.cdf(hits,N,pMembership)
 
-def getClusterScores(coexpressionLists,background,p=0.05):
-    clusterScores = []
-    for i in range(len(coexpressionLists)):    
-        members = assignMembership(coexpressionLists[i],background,p)    
+def getClusterScores(regulonModules,background,p=0.05):
+    clusterScores = {}
+    for key in regulonModules.keys():    
+        members = assignMembership(regulonModules[key],background,p)    
         score = clusterScore(members)
-        clusterScores.append(score)
-    return np.array(clusterScores)
-
+        clusterScores[key] = score
+    return clusterScores
+    
 def filterCoexpressionDict(coexpressionDict,clusterScores,threshold=0.01):   
     filterPoorClusters = np.where(clusterScores>threshold)[0]
     for x in filterPoorClusters:
         del coexpressionDict[x]
     keys = coexpressionDict.keys()
-    filteredDict = {i:coexpressionDict[keys[i]] for i in range(len(coexpressionDict))}
+    filteredDict = {str(i):coexpressionDict[keys[i]] for i in range(len(coexpressionDict))}
     return filteredDict
-
-#def biclusterMembershipDictionary(revisedClusters,background,label=2,p=0.05):
-#
-#    if label == "excluded":
-#        members = {}
-#        for key in revisedClusters.keys():
-#            assignments = assignMembership(revisedClusters[key],background,p=p)
-#            nonMembers = np.array([i for i in range(len(assignments)) if len(assignments[i])==0])
-#            if len(nonMembers) == 0:
-#                members[key] = []
-#                continue
-#            members[key] = list(background.columns[nonMembers])
-#        print("done!")
-#        return members
-#    
-#    if label == "included":
-#        members = {}
-#        for key in revisedClusters.keys():
-#            assignments = assignMembership(revisedClusters[key],background,p=p)
-#            included = np.array([i for i in range(len(assignments)) if len(assignments[i])!=0])
-#            if len(included) == 0:
-#                members[key] = []
-#                continue
-#            members[key] = list(background.columns[included])
-#        print("done!")
-#        return members
-#    
-#    members = {}
-#    for key in revisedClusters.keys():
-#        assignments = assignMembership(revisedClusters[key],background,p=p)
-#        overExpMembers = np.array([i for i in range(len(assignments)) if label in assignments[i]])
-#        if len(overExpMembers) ==0:
-#            members[key] = []
-#            continue
-#        members[key] = list(background.columns[overExpMembers])
-#    print("done!")
-#    return members
 
 def biclusterMembershipDictionary(revisedClusters,background,label=2,p=0.05):
 
@@ -878,16 +889,9 @@ def reviseInitialClusters(clusterList,expressionData,threshold=0.925):
             break
     
     coexpressionLists.sort(key= lambda s: -len(s))
-    coexpressionDict = {i:list(coexpressionLists[i]) for i in range(len(coexpressionLists))}
+    coexpressionDict = {str(i):list(coexpressionLists[i]) for i in range(len(coexpressionLists))}
 
-    # generate background matrix for cluster significance scoring
-    bkgd = backgroundDf(expressionData)
-    # score significance of coexpression in each cluster; 
-    clusterScores = getClusterScores(coexpressionLists,bkgd,p=0.05)
-    # revise clusters to only include those with sufficient coexpression
-    revisedClusters = filterCoexpressionDict(coexpressionDict,clusterScores,threshold=0.01)
-
-    return revisedClusters
+    return coexpressionDict
 
 # =============================================================================
 # Functions used for mechanistic inference
@@ -897,6 +901,7 @@ def regulonDictionary(regulons):
     regulonModules = {}
     #str(i):[regulons[key][j]]}
     df_list = []
+
     for tf in regulons.keys():
         for key in regulons[tf].keys():
             genes = regulons[tf][key]
@@ -904,7 +909,7 @@ def regulonDictionary(regulons):
             regulonModules[id_] = regulons[tf][key]
             for gene in genes:
                 df_list.append([id_,tf,gene])
-    
+
     array = np.vstack(df_list)
     df = pd.DataFrame(array)
     df.columns = ["Regulon_ID","Regulator","Gene"]
@@ -949,14 +954,22 @@ def principalDf(dict_,expressionData,regulons=None,subkey='genes',minNumberGenes
 def axisTfs(axesDf,tfList,expressionData,correlationThreshold=0.3):
     
     axesArray = np.array(axesDf.T)
-    tfArray = np.array(expressionData.loc[tfList,:])
+    if correlationThreshold > 0:
+        tfArray = np.array(expressionData.loc[tfList,:])
     axes = np.array(axesDf.columns)
     tfDict = {}
-    
+
     if type(tfList) is list:
         tfs = np.array(tfList)
     elif type(tfList) is not list:
         tfs = tfList
+        
+    if correlationThreshold == 0:
+        for axis in range(axesArray.shape[0]):
+            tfDict[axes[axis]] = tfs
+
+        return tfDict       
+    
     for axis in range(axesArray.shape[0]):
         tfCorrelation = pearson_array(tfArray,axesArray[axis,:])
         tfDict[axes[axis]] = tfs[np.where(np.abs(tfCorrelation)>=correlationThreshold)[0]]
@@ -994,27 +1007,6 @@ def hyper(population,set1,set2,overlap):
     
     return prb 
 
-def tfbsdbEnrichment(task,p=0.05):
-    
-    start, stop = task[0]
-    expressionData,revisedClusters,tfMap,tfToGenes = task[1]
-    allGenes = list(expressionData.index)
-    keys = revisedClusters.keys()[start:stop]
-    
-    clusterTfs = {}
-    for key in keys:
-        for tf in tfMap[str(key)]:    
-            hits0TfTargets = list(set(tfToGenes[tf])&set(allGenes))   
-            hits0clusterGenes = revisedClusters[key]
-            overlapCluster = list(set(hits0TfTargets)&set(hits0clusterGenes))
-            pHyper = hyper(len(allGenes),len(hits0TfTargets),len(hits0clusterGenes),len(overlapCluster))
-            if pHyper < p:
-                if key not in clusterTfs.keys():
-                    clusterTfs[key] = {}
-                clusterTfs[key][tf] = [pHyper,overlapCluster]
-    
-    return clusterTfs
-
 def condenseOutput(output):
     
     results = {}
@@ -1026,22 +1018,73 @@ def condenseOutput(output):
             results[key] = resultsDict[key]
     return results
 
-def mechanisticInference(axes,revisedClusters,expressionData,correlationThreshold=0.3,numCores=5,dataFolder=os.path.join(os.path.expanduser("~"),"Desktop","miner","data")):
+def tfbsdbEnrichment(task):
+    
+    start, stop = task[0]
+    allGenes,revisedClusters,tfMap,tfToGenes,p = task[1]
+    keys = revisedClusters.keys()[start:stop]
+
+    if len(allGenes) == 1:
+    
+        population_size = int(allGenes[0])
+        clusterTfs = {}
+        for key in keys:
+            for tf in tfMap[str(key)]:    
+                hits0TfTargets = tfToGenes[tf]  
+                hits0clusterGenes = revisedClusters[key]
+                overlapCluster = list(set(hits0TfTargets)&set(hits0clusterGenes))
+                if len(overlapCluster) <= 1:
+                    continue
+                pHyper = hyper(population_size,len(hits0TfTargets),len(hits0clusterGenes),len(overlapCluster))
+                if pHyper < p:
+                    if key not in clusterTfs.keys():
+                        clusterTfs[key] = {}
+                    clusterTfs[key][tf] = [pHyper,overlapCluster]
+
+                            
+    elif len(allGenes) > 1:
+        
+        population_size = len(allGenes)
+        clusterTfs = {}
+        for key in keys:
+            for tf in tfMap[str(key)]:    
+                hits0TfTargets = list(set(tfToGenes[tf])&set(allGenes))   
+                hits0clusterGenes = revisedClusters[key]
+                overlapCluster = list(set(hits0TfTargets)&set(hits0clusterGenes))
+                if len(overlapCluster) <= 1:
+                    continue                
+                pHyper = hyper(population_size,len(hits0TfTargets),len(hits0clusterGenes),len(overlapCluster))
+                if pHyper < p:
+                    if key not in clusterTfs.keys():
+                        clusterTfs[key] = {}
+                    clusterTfs[key][tf] = [pHyper,overlapCluster]
+
+    return clusterTfs
+
+def mechanisticInference(axes,revisedClusters,expressionData,correlationThreshold=0.3,numCores=5,p=0.05,database="tfbsdb_tf_to_genes.pkl",dataFolder=os.path.join(os.path.split(os.getcwd())[0],"data"),override_database=None):
     import os
     
     print('Running mechanistic inference')
-    tfToGenesPath = os.path.join(dataFolder,"network_dictionaries","tfbsdb_tf_to_genes.pkl")
-    tfToGenes = read_pkl(tfToGenesPath)
+    
+    if override_database is None:
+        tfToGenesPath = os.path.join(dataFolder,"network_dictionaries",database)
+        tfToGenes = read_pkl(tfToGenesPath)
+        
+    elif override_database is not None:
+        tfToGenes = override_database
      
+    if correlationThreshold <= 0:
+        allGenes = [int(len(expressionData.index))]
+    elif correlationThreshold > 0:
+        allGenes = list(expressionData.index)
+        
     tfs = tfToGenes.keys()     
     tfMap = axisTfs(axes,tfs,expressionData,correlationThreshold=correlationThreshold) 
     taskSplit = splitForMultiprocessing(revisedClusters.keys(),numCores)
-    tasks = [[taskSplit[i],(expressionData,revisedClusters,tfMap,tfToGenes)] for i in range(len(taskSplit))]
+    tasks = [[taskSplit[i],(allGenes,revisedClusters,tfMap,tfToGenes,p)] for i in range(len(taskSplit))]
     tfbsdbOutput = multiprocess(tfbsdbEnrichment,tasks)
     mechanisticOutput = condenseOutput(tfbsdbOutput)
-    
-    print('Completed mechanistic inference')
-    
+        
     return mechanisticOutput
 
 def coincidenceMatrix(coregulationModules,key,freqThreshold = 0.333):
@@ -1363,7 +1406,7 @@ def mapExpressionToNetwork(centroidMatrix,membershipMatrix,threshold = 0.05):
     
     return centroidClusters
 
-def orderMembership(centroidMatrix,membershipMatrix,mappedClusters,ylabel="",resultsDirectory=None):
+def orderMembership(centroidMatrix,membershipMatrix,mappedClusters,ylabel="",resultsDirectory=None,showplot=False):
 
     centroidRank = []
     alreadyMapped = []
@@ -1377,41 +1420,53 @@ def orderMembership(centroidMatrix,membershipMatrix,mappedClusters,ylabel="",res
         ordered_matrix = membershipMatrix.loc[orderedClusters,np.hstack(mappedClusters)]
     except:
         ordered_matrix = membershipMatrix.loc[np.array(orderedClusters).astype(int),np.hstack(mappedClusters)]
-      
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    try:
-        from matplotlib.ticker import MaxNLocator
-        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    except:
-        pass    
-    ax.imshow(ordered_matrix,cmap='viridis',aspect="auto")
-    ax.grid(False)
-        
-    plt.title(ylabel.split("s")[0]+"Activation",FontSize=16)
-    plt.xlabel("Samples",FontSize=14)
-    plt.ylabel(ylabel,FontSize=14)
-    if resultsDirectory is not None:
-        plt.savefig(os.path.join(resultsDirectory,"binaryActivityMap.pdf"))
+    
+    if showplot is False:
+        return ordered_matrix
+    
+    if showplot is True:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        try:
+            from matplotlib.ticker import MaxNLocator
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        except:
+            pass    
+        ax.imshow(ordered_matrix,cmap='viridis',aspect="auto")
+        ax.grid(False)
+            
+        plt.title(ylabel.split("s")[0]+"Activation",FontSize=16)
+        plt.xlabel("Samples",FontSize=14)
+        plt.ylabel(ylabel,FontSize=14)
+        if resultsDirectory is not None:
+            plt.savefig(os.path.join(resultsDirectory,"binaryActivityMap.pdf"))
     return ordered_matrix
 
-def plotDifferentialMatrix(overExpressedMembersMatrix,underExpressedMembersMatrix,orderedOverExpressedMembers,cmap="viridis",aspect="auto",saveFile=None):
+def plotDifferentialMatrix(overExpressedMembersMatrix,underExpressedMembersMatrix,orderedOverExpressedMembers,cmap="viridis",aspect="auto",saveFile=None,showplot=False):
     differentialActivationMatrix = overExpressedMembersMatrix-underExpressedMembersMatrix
-    fig = plt.figure(figsize=(7,7))  
-    ax = fig.add_subplot(111)
-    try:
-        from matplotlib.ticker import MaxNLocator
-        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    except:
-        pass
     orderedDM = differentialActivationMatrix.loc[orderedOverExpressedMembers.index,orderedOverExpressedMembers.columns]
-    ax.imshow(orderedDM,cmap=cmap,vmin=-1,vmax=1,aspect=aspect)
-    ax.grid(False)
-    if saveFile is not None:
-        plt.ylabel("Modules",FontSize=14)
-        plt.xlabel("Samples",FontSize=14)
-        ax.grid(False)        
-        plt.savefig(saveFile,bbox_inches="tight")
+
+    if showplot is False:
+        
+        return orderedDM
+    
+    elif showplot is True:
+        fig = plt.figure(figsize=(7,7))  
+        ax = fig.add_subplot(111)
+        try:
+            from matplotlib.ticker import MaxNLocator
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        except:
+            pass
+        
+        ax.imshow(orderedDM,cmap=cmap,vmin=-1,vmax=1,aspect=aspect)
+        ax.grid(False)
+        if saveFile is not None:
+            plt.ylabel("Regulons",FontSize=14)
+            plt.xlabel("Samples",FontSize=14)
+            ax.grid(False)        
+            plt.savefig(saveFile,bbox_inches="tight")
+            
     return orderedDM
 
 def kmeans(df,numClusters,random_state=None):
@@ -1629,7 +1684,7 @@ def reduceModules(df,programs,states,stateThreshold=0.75,saveFile=None):
         
     return statesDf
 
-def programsVsStates(statesDf,states,filename=None):
+def programsVsStates(statesDf,states,filename=None,showplot=False):
     pixel = np.zeros((statesDf.shape[0],len(states)))
     for i in range(statesDf.shape[0]):
         for j in range(len(states)):
@@ -1638,6 +1693,9 @@ def programsVsStates(statesDf,states,filename=None):
     pixel = pd.DataFrame(pixel)
     pixel.index = statesDf.index
 
+    if showplot is False:
+        return pixel
+    
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.imshow(pixel,cmap="bwr",vmin=-1,vmax=1,aspect="auto")
@@ -1925,6 +1983,55 @@ def guanRank(kmSurvival,saveFile=None):
         
     return survivalData
 
+def survivalMedianAnalysis(task):
+    
+    from lifelines import CoxPHFitter
+    
+    start, stop = task[0]
+    referenceDictionary,expressionDf,SurvivalDf = task[1]    
+    
+    overlapPatients = list(set(expressionDf.columns)&set(SurvivalDf.index))
+    Survival = SurvivalDf.loc[overlapPatients,SurvivalDf.columns[0:2]]    
+
+    coxResults = {}
+    keys = referenceDictionary.keys()[start:stop]
+    ct=0
+    for key in keys:
+        ct+=1
+        if ct%10==0:
+            print(ct)
+        try:
+            geneset = referenceDictionary[key]
+            cluster = expressionDf.loc[geneset,overlapPatients]
+            nz = np.count_nonzero(cluster+4.01,axis=0)
+            
+            medians = []
+            for i in range(cluster.shape[1]):
+                if nz[i] >= 3:
+                    median = np.median(cluster.iloc[:,i][cluster.iloc[:,i]>-4.01])
+                elif nz[i] < 3:
+                    median = np.median(cluster.iloc[:,i])
+                medians.append(median)
+                
+            medianDf = pd.DataFrame(medians)
+            medianDf.index = overlapPatients
+            medianDf.columns = ["median"]
+            Survival = pd.concat([Survival,medianDf],axis=1)
+            Survival.sort_values(by=Survival.columns[0],inplace=True)
+            
+            cph = CoxPHFitter()
+            cph.fit(Survival, duration_col=Survival.columns[0], event_col=Survival.columns[1])
+        
+            tmpcph = cph.summary
+            
+            cox_hr = tmpcph.loc[key,"z"]
+            cox_p = tmpcph.loc[key,"p"]  
+            coxResults[key] = (cox_hr, cox_p)
+        except:
+            coxResults[key] = (0, 1)
+        
+    return coxResults
+
 def survivalMembershipAnalysis(task):
 
     from lifelines import CoxPHFitter
@@ -1989,6 +2096,18 @@ def survivalMembershipAnalysisDirect(membershipDf,SurvivalDf,key):
         
     return coxResults
 
+def parallelMedianSurvivalAnalysis(referenceDictionary,expressionDf,numCores=5,survivalPath=None,survivalData=None):
+
+    if survivalData is None:
+        survivalData = pd.read_csv(survivalPath,index_col=0,header=0)
+    taskSplit = splitForMultiprocessing(referenceDictionary.keys(),numCores)
+    taskData = (referenceDictionary,expressionDf,survivalData)
+    tasks = [[taskSplit[i],taskData] for i in range(len(taskSplit))]
+    coxOutput = multiprocess(survivalMedianAnalysis,tasks)
+    survivalAnalysis = condenseOutput(coxOutput)
+
+    return survivalAnalysis
+
 def parallelMemberSurvivalAnalysis(membershipDf,numCores=5,survivalPath=None,survivalData=None):
 
     if survivalData is None:
@@ -1998,11 +2117,56 @@ def parallelMemberSurvivalAnalysis(membershipDf,numCores=5,survivalPath=None,sur
     tasks = [[taskSplit[i],taskData] for i in range(len(taskSplit))]
     coxOutput = multiprocess(survivalMembershipAnalysis,tasks)
     survivalAnalysis = condenseOutput(coxOutput)
-
+    
     return survivalAnalysis
 
+def survivalAnalysis(task):
+    
+    from lifelines import CoxPHFitter
+    
+    start, stop = task[0]
+    expressionDf,SurvivalDf = task[1]    
+    
+    overlapPatients = list(set(expressionDf.columns)&set(SurvivalDf.index))
+    Survival = SurvivalDf.loc[overlapPatients,SurvivalDf.columns[0:2]]    
+
+    coxResults = {}
+    keys = expressionDf.index[start:stop]
+
+    for key in keys:
+        values = np.array(expressionDf.loc[key,overlapPatients])
+        try:        
+            medianDf = pd.DataFrame(values)
+            medianDf.index = overlapPatients
+            medianDf.columns = ["value"]
+            Survival2 = pd.concat([Survival,medianDf],axis=1)
+            Survival2.sort_values(by=Survival2.columns[0],inplace=True)
+        
+            cph = CoxPHFitter()
+            cph.fit(Survival2, duration_col=Survival2.columns[0], event_col=Survival2.columns[1])
+        
+            tmpcph = cph.summary
+        
+            cox_hr = tmpcph.loc["value","z"]
+            cox_p = tmpcph.loc["value","p"] 
+            coxResults[key] = (cox_hr, cox_p)
+        except:
+            coxResults[key] = (0, 1)
+        
+    return coxResults
+
+def parallelSurvivalAnalysis(expressionDf,survivalData,numCores=5):
+
+    taskSplit = splitForMultiprocessing(expressionDf.index,numCores)
+    taskData = (expressionDf,survivalData)
+    tasks = [[taskSplit[i],taskData] for i in range(len(taskSplit))]
+    coxOutput = multiprocess(survivalAnalysis,tasks)
+    survivalResults = condenseOutput(coxOutput)
+
+    return survivalResults
+
 def kmplot(srv,groups,labels,xlim_=None,filename=None):
-    plt.figure()
+
     for group in groups:
         patients = list(set(srv.index)&set(group))
         kmDf = kmAnalysis(survivalDf=srv.loc[patients,["duration","observed"]],durationCol="duration",statusCol="observed")
@@ -2076,6 +2240,571 @@ def combinedStates(groups,ranked_groups,survivalDf,minSamples=4,maxStates=7):
 # Functions used for causal inference
 # =============================================================================
 
+def causalNetworkAnalysis(regulon_matrix,expression_matrix,reference_matrix,mutation_matrix,resultsDirectory,minRegulons=1,significance_threshold=0.05,causalFolder="causal_results"):
+    
+    if not os.path.isdir(resultsDirectory):
+        os.mkdir(resultsDirectory)    
+    # create results directory
+    causal_path = os.path.join(resultsDirectory,causalFolder)
+    if not os.path.isdir(causal_path):
+        os.mkdir(causal_path)
+
+    t1 = time.time()
+    ###
+    regulon_df_bcindex = regulon_matrix.copy()
+    regulon_df_bcindex.index = np.array(regulon_df_bcindex["Regulon_ID"]).astype(str)
+
+    regulon_df_gene_index = regulon_matrix.copy()
+    regulon_df_gene_index.index = regulon_df_gene_index["Gene"]
+
+    tf_name = []
+    bc_name = []
+    rs_1 = []
+    ps_1 = []
+    index_1 = []
+    
+    missing_tfs = list(set(regulon_df_bcindex.loc[:,"Regulator"])-set(expression_matrix.index))
+    for key in list(set(regulon_df_bcindex.index)):
+        e_gene = reference_matrix.loc[str(key),:]
+        tf = list(regulon_df_bcindex.loc[key,"Regulator"])[0]
+        if tf not in missing_tfs:
+            tf_exp = expression_matrix.loc[tf,reference_matrix.columns]
+            r, p = stats.spearmanr(tf_exp, e_gene)
+        else:
+            r, p = (0,1)
+        tf_name.append(tf)
+        bc_name.append(key)
+        rs_1.append(r)
+        ps_1.append(p)
+        index_1.append(key)
+
+    correlation_df_bcindex = pd.DataFrame(np.vstack([tf_name,bc_name,rs_1,ps_1]).T) # Table
+    correlation_df_bcindex.columns = ["Regulator","Regulon_ID","Spearman_R","Spearman_p"]
+    correlation_df_bcindex.index = np.array(index_1).astype(str)
+
+    correlation_df_regulator_index = correlation_df_bcindex.copy() # Table
+    correlation_df_regulator_index.index = correlation_df_regulator_index["Regulator"]
+
+    ###
+    for mut_ix in range(mutation_matrix.shape[0]):
+
+        mutation_name = mutation_matrix.index[mut_ix]
+
+        phenotype_2 = mutation_matrix.columns[mutation_matrix.loc[mutation_name,:]==1]
+        phenotype_1 = list(set(mutation_matrix.columns)-set(phenotype_2))
+        phenotype_2 = list(set(phenotype_2)&set(reference_matrix.columns))
+        phenotype_1 = list(set(phenotype_1)&set(reference_matrix.columns))
+        
+        regulon_ttests = pd.DataFrame(
+            np.vstack(
+                stats.ttest_ind(reference_matrix.loc[:,phenotype_2],reference_matrix.loc[:,phenotype_1],equal_var=False,axis=1)
+            ).T
+        )
+
+        regulon_ttests.index = reference_matrix.index
+        regulon_ttests.columns = ["Regulon_t-test_t","Regulon_t-test_p"] # Table1: eigengenes ttests
+
+        result_dfs = []
+        mean_ts = []
+        mean_significance = []
+
+        upstream_regulators = list(set(regulon_matrix.Regulator)-set(regulon_df_gene_index.index))
+        for regulator_ in list(set(regulon_matrix.Regulator)&set(regulon_df_gene_index.index)): # analyze all regulators in regulon_matrix
+
+            if regulator_ not in upstream_regulators:
+                tmp = regulon_df_gene_index.loc[regulator_,"Regulon_ID"]
+                if type(tmp) is not pd.core.series.Series:
+                    regulons_ = [str(tmp)]
+                elif type(tmp) is pd.core.series.Series:
+                    regulons_ = list(np.array(tmp).astype(str))
+
+                neglogps = []
+                ts = []
+
+                for regulon_ in regulons_:
+                    t, p = list(regulon_ttests.loc[regulon_,:])
+                    tmp_neglogp = -np.log10(p)
+                    neglogps.append(tmp_neglogp)
+                    ts.append(t)
+
+                mean_ts = np.mean(ts)
+                mean_significance = np.mean(neglogps)
+
+            else:
+                xt, xp = stats.ttest_ind(expression_matrix.loc[regulator_,phenotype_2],expression_matrix.loc[regulator_,phenotype_1],equal_var=False)
+                mean_ts = xt
+                mean_significance = -np.log10(xp)
+
+            if mean_significance >= -np.log10(significance_threshold):
+                downstream_tmp = correlation_df_regulator_index.loc[regulator_,"Regulon_ID"]
+                if type(downstream_tmp) is not pd.core.series.Series:
+                    downstream_regulons = [str(downstream_tmp)]
+                elif type(downstream_tmp) is pd.core.series.Series:
+                    downstream_regulons = list(np.array(downstream_tmp).astype(str))
+
+                if len(downstream_regulons)<minRegulons:
+                    continue
+
+                d_neglogps = []
+                d_ts = []
+                for downstream_regulon_ in downstream_regulons:
+                    dt, dp = list(regulon_ttests.loc[downstream_regulon_,:])
+                    tmp_neglogp = -np.log10(dp)
+                    d_neglogps.append(tmp_neglogp)
+                    d_ts.append(dt)
+
+                d_neglogps = np.array(d_neglogps)
+                d_ts = np.array(d_ts)
+
+                mask = np.where(d_neglogps >= -np.log10(significance_threshold))[0]
+                if len(mask) == 0:
+                    continue
+
+                significant_regulons = np.array(downstream_regulons)[mask]
+                significant_regulon_ts = d_ts[mask]
+                significant_regulon_ps = d_neglogps[mask]
+
+                significant_Rs = np.array(correlation_df_bcindex.loc[significant_regulons,"Spearman_R"]).astype(float)
+                significant_ps = np.array(correlation_df_bcindex.loc[significant_regulons,"Spearman_p"]).astype(float)
+
+                assignment_values = mean_ts*significant_Rs*significant_regulon_ts
+                #assignments = assignment_values/np.abs(assignment_values)
+                alignment_mask = np.where(assignment_values>0)[0]
+
+                if len(alignment_mask) == 0:
+                    continue
+
+                mutation_list = np.array([mutation_name for i in range(len(alignment_mask))])
+                regulator_list = np.array([regulator_ for i in range(len(alignment_mask))])
+                bicluster_list = significant_regulons[alignment_mask]
+                mutation_regulator_edge_direction = np.array([mean_ts/np.abs(mean_ts) for i in range(len(alignment_mask))])
+                mutation_regulator_edge_ps = np.array([mean_significance for i in range(len(alignment_mask))])
+                regulator_bicluster_rs = significant_Rs[alignment_mask]
+                regulator_bicluster_ps = significant_ps[alignment_mask]    
+                bicluster_ts = significant_regulon_ts[alignment_mask]
+                bicluster_ps = significant_regulon_ps[alignment_mask]  
+                fraction_aligned = np.array([len(alignment_mask)/float(len(mask)) for i in range(len(alignment_mask))])
+
+
+                results_ = pd.DataFrame(
+                    np.vstack(
+                        [
+                            mutation_list,
+                            regulator_list,
+                            bicluster_list,
+                            mutation_regulator_edge_direction,
+                            mutation_regulator_edge_ps,
+                            regulator_bicluster_rs,
+                            regulator_bicluster_ps,
+                            bicluster_ts,
+                            bicluster_ps,
+                            fraction_aligned
+                        ]
+                    ).T
+                )
+
+                results_.columns = [
+                    "Mutation",
+                    "Regulator",
+                    "Regulon",
+                    "MutationRegulatorEdge",
+                    "-log10(p)_MutationRegulatorEdge",
+                    "RegulatorRegulon_Spearman_R",
+                    "RegulatorRegulon_Spearman_p-value",
+                    "Regulon_stratification_t-statistic",
+                    "-log10(p)_Regulon_stratification",
+                    "Fraction_of_edges_correctly_aligned"
+                ]
+
+                results_.index = bicluster_list
+
+                result_dfs.append(results_)
+
+            elif mean_significance < -np.log10(significance_threshold):
+                continue
+
+        if len(result_dfs) == 0:
+            continue
+        elif len(result_dfs) == 1:
+            causal_output = result_dfs[0]
+        if len(result_dfs) > 1:
+            causal_output = pd.concat(result_dfs,axis=0)
+            
+        output_file = ("").join([mutation_name,"_causal_results",".csv"])
+        causal_output.to_csv(os.path.join(causal_path,output_file))
+
+
+    t2 = time.time()
+
+    print('completed causal analysis in {:.2f} minutes'.format((t2-t1)/60.))
+    
+    return
+
+def causalNetworkImpact(target_genes,regulon_matrix,expression_matrix,reference_matrix,mutation_matrix,resultsDirectory,minRegulons=1,significance_threshold=0.05,causalFolder="causal_results",return_df=False,tag=None):
+       
+    # create results directory
+    if not os.path.isdir(resultsDirectory):
+        os.mkdir(resultsDirectory)    
+    causal_path = os.path.join(resultsDirectory,causalFolder)
+    if not os.path.isdir(causal_path):
+        os.mkdir(causal_path)
+
+    ###
+    regulon_df_bcindex = regulon_matrix.copy()
+    regulon_df_bcindex.index = np.array(regulon_df_bcindex["Regulon_ID"]).astype(str)
+
+    regulon_df_gene_index = regulon_matrix.copy()
+    regulon_df_gene_index.index = regulon_df_gene_index["Gene"]
+
+    dfs = []
+    ###
+    for mut_ix in range(mutation_matrix.shape[0]):
+        rows = []
+        mutation_name = mutation_matrix.index[mut_ix]
+
+        phenotype_2 = mutation_matrix.columns[mutation_matrix.loc[mutation_name,:]==1]
+        phenotype_1 = list(set(mutation_matrix.columns)-set(phenotype_2))
+        phenotype_2 = list(set(phenotype_2)&set(reference_matrix.columns))
+        phenotype_1 = list(set(phenotype_1)&set(reference_matrix.columns))
+        
+        regulon_ttests = pd.DataFrame(
+            np.vstack(
+                stats.ttest_ind(reference_matrix.loc[:,phenotype_2],reference_matrix.loc[:,phenotype_1],equal_var=False,axis=1)
+            ).T
+        )
+
+        regulon_ttests.index = reference_matrix.index
+        regulon_ttests.columns = ["Regulon_t-test_t","Regulon_t-test_p"] # Table1: eigengenes ttests
+
+        mean_ts = []
+        mean_significance = []
+
+        target_genes = list(set(target_genes)&set(expression_matrix.index))
+        target_genes_in_network = list(set(target_genes)&set(regulon_df_gene_index.index))
+        for regulator_ in target_genes: # analyze all target_genes in expression_matrix
+
+            if regulator_ in target_genes_in_network:
+                tmp = regulon_df_gene_index.loc[regulator_,"Regulon_ID"]
+                if type(tmp) is not pd.core.series.Series:
+                    regulons_ = [str(tmp)]
+                elif type(tmp) is pd.core.series.Series:
+                    regulons_ = list(np.array(tmp).astype(str))
+
+                neglogps = []
+                ts = []
+
+                for regulon_ in regulons_:
+                    t, p = list(regulon_ttests.loc[regulon_,:])
+                    tmp_neglogp = -np.log10(p)
+                    neglogps.append(tmp_neglogp)
+                    ts.append(t)
+
+                mean_ts = np.mean(ts)
+                mean_significance = np.mean(neglogps)
+                pp = 10**(-1*mean_significance)
+
+            else:
+                xt, xp = stats.ttest_ind(expression_matrix.loc[regulator_,phenotype_2],expression_matrix.loc[regulator_,phenotype_1],equal_var=False)
+                mean_ts = xt
+                mean_significance = -np.log10(xp)
+                pp = 10**(-1*mean_significance)
+            
+            if mean_significance >= -np.log10(significance_threshold):
+                results = [mutation_name,regulator_,mean_ts,mean_significance,pp]
+                rows.append(results)
+
+        if len(rows) == 0:
+            continue
+        
+        output = pd.DataFrame(np.vstack(rows))
+        output.columns = ["Mutation","Regulator","t-statistic","-log10(p)","p"]
+        sort_values = np.argsort(np.array(output["p"]).astype(float))
+        output = output.iloc[sort_values,:]
+        
+        if tag is None:
+            tag = "network_impact"
+        filename = ("_").join([mutation_name,tag])
+        output.to_csv(("").join([os.path.join(causal_path,filename),".csv"]))
+        if return_df is True:
+            dfs.append(output)
+    if return_df is True:
+        concatenate_dfs = pd.concat(dfs,axis=0)
+        concatenate_dfs.index = range(concatenate_dfs.shape[0])
+        return concatenate_dfs
+        
+    return
+
+def viewSelectedCausalResults(causalDf,selected_mutation,minimum_fraction_correctly_aligned=0.5,correlation_pValue_cutoff=0.05,regulon_stratification_pValue=0.05):
+    causalDf = causalDf[causalDf.Mutation==selected_mutation]
+    causalDf = causalDf[causalDf["RegulatorRegulon_Spearman_p-value"]<=correlation_pValue_cutoff]  
+    causalDf = causalDf[causalDf["Fraction_of_edges_correctly_aligned"]>=minimum_fraction_correctly_aligned]  
+    if '-log10(p)_Regulon_stratification' in causalDf.columns:
+        causalDf = causalDf[causalDf["-log10(p)_Regulon_stratification"]>=-np.log10(regulon_stratification_pValue)]  
+    elif 'Regulon_stratification_p-value' in causalDf.columns:
+        causalDf = causalDf[causalDf["Regulon_stratification_p-value"]>=-np.log10(regulon_stratification_pValue)]  
+
+    return causalDf
+
+def causalNetworkAnalysisTask(task):    
+
+    start, stop = task[0]    
+    regulon_matrix,expression_matrix,reference_matrix,mutation_matrix,minRegulons,significance_threshold,causal_path = task[1]
+    ###
+    regulon_df_bcindex = regulon_matrix.copy()
+    regulon_df_bcindex.index = np.array(regulon_df_bcindex["Regulon_ID"]).astype(str)
+
+    regulon_df_gene_index = regulon_matrix.copy()
+    regulon_df_gene_index.index = regulon_df_gene_index["Gene"]
+
+    tf_name = []
+    bc_name = []
+    rs_1 = []
+    ps_1 = []
+    index_1 = []
+    for key in list(set(regulon_df_bcindex.index)):
+        e_gene = reference_matrix.loc[str(key),:]
+        tf = list(regulon_df_bcindex.loc[key,"Regulator"])[0]
+        tf_exp = expression_matrix.loc[tf,reference_matrix.columns]
+        r, p = stats.spearmanr(tf_exp, e_gene)
+        tf_name.append(tf)
+        bc_name.append(key)
+        rs_1.append(r)
+        ps_1.append(p)
+        index_1.append(key)
+
+    correlation_df_bcindex = pd.DataFrame(np.vstack([tf_name,bc_name,rs_1,ps_1]).T) # Table
+    correlation_df_bcindex.columns = ["Regulator","Regulon_ID","Spearman_R","Spearman_p"]
+    correlation_df_bcindex.index = np.array(index_1).astype(str)
+
+    correlation_df_regulator_index = correlation_df_bcindex.copy() # Table
+    correlation_df_regulator_index.index = correlation_df_regulator_index["Regulator"]
+
+    ###
+    for mut_ix in range(start,stop):
+
+        mutation_name = mutation_matrix.index[mut_ix]
+
+        phenotype_2 = mutation_matrix.columns[mutation_matrix.loc[mutation_name,:]==1]
+        phenotype_1 = list(set(mutation_matrix.columns)-set(phenotype_2))
+
+        regulon_ttests = pd.DataFrame(
+            np.vstack(
+                stats.ttest_ind(reference_matrix.loc[:,phenotype_2],reference_matrix.loc[:,phenotype_1],equal_var=False,axis=1)
+            ).T
+        )
+
+        regulon_ttests.index = reference_matrix.index
+        regulon_ttests.columns = ["Regulon_t-test_t","Regulon_t-test_p"] # Table1: eigengenes ttests
+
+        result_dfs = []
+        mean_ts = []
+        mean_significance = []
+
+        upstream_regulators = list(set(regulon_matrix.Regulator)-set(regulon_df_gene_index.index))
+        for regulator_ in list(set(regulon_matrix.Regulator)&set(regulon_df_gene_index.index)): # analyze all regulators in regulon_matrix
+
+            if regulator_ not in upstream_regulators:
+                tmp = regulon_df_gene_index.loc[regulator_,"Regulon_ID"]
+                if type(tmp) is not pd.core.series.Series:
+                    regulons_ = [str(tmp)]
+                elif type(tmp) is pd.core.series.Series:
+                    regulons_ = list(np.array(tmp).astype(str))
+
+                neglogps = []
+                ts = []
+
+                for regulon_ in regulons_:
+                    t, p = list(regulon_ttests.loc[regulon_,:])
+                    tmp_neglogp = -np.log10(p)
+                    neglogps.append(tmp_neglogp)
+                    ts.append(t)
+
+                mean_ts = np.mean(ts)
+                mean_significance = np.mean(neglogps)
+
+            else:
+                xt, xp = stats.ttest_ind(expression_matrix.loc[regulator_,phenotype_2],expression_matrix.loc[regulator_,phenotype_1],equal_var=False)
+                mean_ts = xt
+                mean_significance = -np.log10(xp)
+
+            if mean_significance >= -np.log10(significance_threshold):
+                downstream_tmp = correlation_df_regulator_index.loc[regulator_,"Regulon_ID"]
+                if type(downstream_tmp) is not pd.core.series.Series:
+                    downstream_regulons = [str(downstream_tmp)]
+                elif type(downstream_tmp) is pd.core.series.Series:
+                    downstream_regulons = list(np.array(downstream_tmp).astype(str))
+
+                if len(downstream_regulons)<minRegulons:
+                    continue
+
+                d_neglogps = []
+                d_ts = []
+                for downstream_regulon_ in downstream_regulons:
+                    dt, dp = list(regulon_ttests.loc[downstream_regulon_,:])
+                    tmp_neglogp = -np.log10(dp)
+                    d_neglogps.append(tmp_neglogp)
+                    d_ts.append(dt)
+
+                d_neglogps = np.array(d_neglogps)
+                d_ts = np.array(d_ts)
+
+                mask = np.where(d_neglogps >= -np.log10(significance_threshold))[0]
+                if len(mask) == 0:
+                    continue
+
+                significant_regulons = np.array(downstream_regulons)[mask]
+                significant_regulon_ts = d_ts[mask]
+                significant_regulon_ps = d_neglogps[mask]
+
+                significant_Rs = np.array(correlation_df_bcindex.loc[significant_regulons,"Spearman_R"]).astype(float)
+                significant_ps = np.array(correlation_df_bcindex.loc[significant_regulons,"Spearman_p"]).astype(float)
+
+                assignment_values = mean_ts*significant_Rs*significant_regulon_ts
+                #assignments = assignment_values/np.abs(assignment_values)
+                alignment_mask = np.where(assignment_values>0)[0]
+
+                if len(alignment_mask) == 0:
+                    continue
+
+                mutation_list = np.array([mutation_name for i in range(len(alignment_mask))])
+                regulator_list = np.array([regulator_ for i in range(len(alignment_mask))])
+                bicluster_list = significant_regulons[alignment_mask]
+                mutation_regulator_edge_direction = np.array([mean_ts/np.abs(mean_ts) for i in range(len(alignment_mask))])
+                mutation_regulator_edge_ps = np.array([mean_significance for i in range(len(alignment_mask))])
+                regulator_bicluster_rs = significant_Rs[alignment_mask]
+                regulator_bicluster_ps = significant_ps[alignment_mask]    
+                bicluster_ts = significant_regulon_ts[alignment_mask]
+                bicluster_ps = significant_regulon_ps[alignment_mask]  
+                fraction_aligned = np.array([len(alignment_mask)/float(len(mask)) for i in range(len(alignment_mask))])
+
+
+                results_ = pd.DataFrame(
+                    np.vstack(
+                        [
+                            mutation_list,
+                            regulator_list,
+                            bicluster_list,
+                            mutation_regulator_edge_direction,
+                            mutation_regulator_edge_ps,
+                            regulator_bicluster_rs,
+                            regulator_bicluster_ps,
+                            bicluster_ts,
+                            bicluster_ps,
+                            fraction_aligned
+                        ]
+                    ).T
+                )
+
+                results_.columns = [
+                    "Mutation",
+                    "Regulator",
+                    "Regulon",
+                    "MutationRegulatorEdge",
+                    "-log10(p)_MutationRegulatorEdge",
+                    "RegulatorRegulon_Spearman_R",
+                    "RegulatorRegulon_Spearman_p-value",
+                    "Regulon_stratification_t-statistic",
+                    "Regulon_stratification_p-value",
+                    "Fraction_of_edges_correctly_aligned"
+                ]
+
+                results_.index = bicluster_list
+
+                result_dfs.append(results_)
+
+            elif mean_significance < -np.log10(significance_threshold):
+                continue
+
+        causal_output = pd.concat(result_dfs,axis=0)
+        output_file = ("").join([mutation_name,"_causal_results",".csv"])
+        causal_output.to_csv(os.path.join(causal_path,output_file))
+
+    return
+
+def parallelCausalNetworkAnalysis(regulon_matrix,expression_matrix,reference_matrix,mutation_matrix,causal_path,numCores,minRegulons=1,significance_threshold=0.05):
+
+    # create results directory
+    if not os.path.isdir(causal_path):
+        os.mkdir(causal_path)
+
+    t1 = time.time()
+    
+    taskSplit = splitForMultiprocessing(mutation_matrix.index,numCores)
+    taskData = (regulon_matrix,expression_matrix,reference_matrix,mutation_matrix,minRegulons,significance_threshold,causal_path)
+    tasks = [[taskSplit[i],taskData] for i in range(len(taskSplit))]
+    multiprocess(causalNetworkAnalysisTask,tasks)
+
+    t2 = time.time()
+    print('completed causal analysis in {:.2f} minutes'.format((t2-t1)/60.))
+
+    return 
+
+def wiringDiagram(causal_results,regulonModules,coherent_samples_matrix,include_genes=False,savefile=None):
+    cytoscape_output = []
+    for regulon in list(set(causal_results.index)):
+
+        genes = regulonModules[regulon]
+        samples = coherent_samples_matrix.columns[coherent_samples_matrix.loc[int(regulon),:]==1]
+        condensed_genes = (";").join(genes)
+        condensed_samples = (";").join(samples)
+        causal_info = causal_results.loc[regulon,:]
+        if type(causal_info) is pd.core.frame.DataFrame:
+            for i in range(causal_info.shape[0]):
+                mutation = causal_info.iloc[i,0]
+                reg = causal_info.iloc[i,1]
+                tmp_edge1 = causal_info.iloc[i,3]
+                if tmp_edge1 >0:
+                    edge1 = "up-regulates"
+                elif tmp_edge1 <0:
+                    edge1 = "down-regulates"    
+                tmp_edge2 = causal_info.iloc[i,5]
+                if tmp_edge2 >0:
+                    edge2 = "activates"
+                elif tmp_edge2 <0:
+                    edge2 = "represses"  
+
+                if include_genes is True:
+                    cytoscape_output.append([mutation,edge1,reg,edge2,regulon,condensed_genes,condensed_samples])
+                elif include_genes is False:
+                    cytoscape_output.append([mutation,edge1,reg,edge2,regulon])
+
+        elif type(causal_info) is pd.core.series.Series:
+            for i in range(causal_info.shape[0]):
+                mutation = causal_info[0]
+                reg = causal_info[1]
+                tmp_edge1 = causal_info[3]
+                if tmp_edge1 >0:
+                    edge1 = "up-regulates"
+                elif tmp_edge1 <0:
+                    edge1 = "down-regulates"    
+                tmp_edge2 = causal_info[5]
+                if tmp_edge2 >0:
+                    edge2 = "activates"
+                elif tmp_edge2 <0:
+                    edge2 = "represses"  
+
+                if include_genes is True:
+                    cytoscape_output.append([mutation,edge1,reg,edge2,regulon,condensed_genes,condensed_samples])
+                elif include_genes is False:
+                    cytoscape_output.append([mutation,edge1,reg,edge2,regulon])
+
+    cytoscapeDf = pd.DataFrame(np.vstack(cytoscape_output))
+
+    if include_genes is True:
+        cytoscapeDf.columns = ["mutation","mutation-regulator_edge","regulator","regulator-regulon_edge","regulon","genes","samples"]
+    elif include_genes is False:
+        cytoscapeDf.columns = ["mutation","mutation-regulator_edge","regulator","regulator-regulon_edge","regulon"]
+
+    sort_by_regulon = np.argsort(np.array(cytoscapeDf["regulon"]).astype(int))
+    cytoscapeDf = cytoscapeDf.iloc[sort_by_regulon,:]
+    cytoscapeDf.index = cytoscapeDf["regulon"]
+    rename = [("-").join(["R",name]) for name in cytoscapeDf.index]
+    cytoscapeDf.loc[:,"regulon"] = rename
+    if savefile is not None:
+        cytoscapeDf.to_csv(savefile)
+
+    return cytoscapeDf
+
 def biclusterTfIncidence(mechanisticOutput,regulons=None):
 
     import pandas as pd
@@ -2142,9 +2871,9 @@ def tfExpression(expressionData,motifPath=os.path.join("..","data","all_tfs_to_m
     tfExp = expressionData.loc[tfs,:]
     return tfExp
 
-def filterMutations(mutationFile,minNumMutations=None):
+def filterMutations(mutationFile, minNumMutations=None):
 
-    mutations = pd.read_csv(mutationFile,index_col=0,header=0)
+    mutations = pd.read_csv(mutationFile, index_col=0, header=0)
     if minNumMutations is None:
         minNumMutations = min(np.ceil(mutations.shape[1]*0.01),4)
     freqMuts = list(mutations.index[np.where(np.sum(mutations,axis=1)>=minNumMutations)[0]])
@@ -2235,21 +2964,23 @@ def generateCausalInputs(expressionData,
     index = np.sort(np.array(eigengenes.index).astype(int))
     eigengenes = eigengenes.loc[index.astype(str),:]
     eigengenes.to_csv(os.path.join(saveFolder,"eigengenes.csv"))
-
+    
     #tfExpression
     tfExp = tfExpression(expressionData,
                          motifPath=os.path.join(dataFolder, "all_tfs_to_motifs.pkl"))
     tfExp.to_csv(os.path.join(saveFolder,"tfExpression.csv"))
-
+    
     #filteredMutations:
     filteredMutations = filterMutations(mutationFile)
-    filteredMutations.to_csv(os.path.join(saveFolder,"filteredMutations.csv"))
-
+    filteredMutations.to_csv(os.path.join(saveFolder,"filteredMutations.csv"))    
+    
     #regStratAll
-    tfStratMutations = mutationRegulatorStratification(filteredMutations,tfDf=tfExp,threshold=0.01)
+    tfStratMutations = mutationRegulatorStratification(filteredMutations,tfDf=tfExp,threshold=0.01)                
     keepers = list(set(np.arange(tfStratMutations.shape[1]))-set(np.where(np.sum(tfStratMutations,axis=0)==0)[0]))
-    tfStratMutations = tfStratMutations.iloc[:,keepers]
+    tfStratMutations = tfStratMutations.iloc[:,keepers]    
     tfStratMutations.to_csv(os.path.join(saveFolder,"regStratAll.csv"))
+    
+    return
 
 def processCausalResults(causalPath=os.path.join("..","results","causal"),causalDictionary=False):
 
@@ -2453,339 +3184,12 @@ def precision(matrix, labels):
     prec[np.where(TP<=5)[0]]=0
     return prec
 
-def areaScore(highRisk,lowRisk,survivalDf,durationCol="duration",censorCol = "observed",kmCol = "kmEstimate",plot=False):
-    hr_pats = list(set(highRisk)&set(survivalDf.index))
-    hr_survival = survivalDf.loc[hr_pats,:]
-    hr_survival.sort_values(by=durationCol,inplace=True)
-    hr_survival.head(5)
-    hr_pfs = kmAnalysis(hr_survival,durationCol,censorCol,saveFile=None)
-
-    lr_pats = list(set(lowRisk)&set(survivalDf.index))
-    lr_survival = survivalDf.loc[lr_pats,:]
-    lr_survival.sort_values(by=durationCol,inplace=True)
-    lr_survival.head(5)
-    lr_pfs = kmAnalysis(lr_survival,durationCol,censorCol,saveFile=None)
-
-    hrDuration = np.array(hr_pfs.loc[:,durationCol])
-    hrDurationShift = np.concatenate([np.array([0]),np.array([hrDuration[i] for i in range(len(hrDuration)-1)])])
-    lrDuration = np.array(lr_pfs.loc[:,durationCol])
-    lrDurationShift = np.concatenate([np.array([0]),np.array([lrDuration[i] for i in range(len(lrDuration)-1)])])
-
-    hrKME = np.array(hr_pfs.loc[:,kmCol])
-    hrKMEShift = np.concatenate([np.array([1]),np.array([hrKME[i] for i in range(len(hrKME)-1)])])
-    lrKME = np.array(lr_pfs.loc[:,kmCol])
-    lrKMEShift = np.concatenate([np.array([1]),np.array([lrKME[i] for i in range(len(lrKME)-1)])])
-
-    hr_widths = hrDuration - hrDurationShift
-    hr_area = np.sum(hr_widths*hrKMEShift)
-    lr_widths = lrDuration - lrDurationShift
-    lr_area = np.sum(lr_widths*lrKMEShift)
-    area_statistic = max(hr_area,lr_area)/float(min(hr_area,lr_area))
-    
-    if plot is True:
-        plt.step(hrDuration,hrKME)
-        plt.step(lrDuration,lrKME)
-        plt.ylim(0,1)
-        
-    return hr_area, lr_area, area_statistic
-
-def tscores(riskGroups,srvs,numDatasets=None):
-    if numDatasets is None:
-        numDatasets = len(srvs)
-    hr_tvals = []
-    for i in range(len(riskGroups)):
-        tmp_tval = []
-        for iteration in range(numDatasets):
-            srv = srvs[iteration]
-            hr_samples = riskGroups[i][iteration]
-            lr_samples = list(set(srv.index)-set(hr_samples))
-
-            gHR = np.array(srv.loc[hr_samples,"GuanScore"])
-            gLR = np.array(srv.loc[lr_samples,"GuanScore"])
-            ttest = stats.ttest_ind(gHR,gLR,equal_var=False)
-            tmp_tval.append(ttest[0])
-            #print(ttest[0])
-        hr_tvals.append(np.mean(tmp_tval))
-    nans = np.where(np.abs(np.array(hr_tvals).astype(int))<0)[0]
-    tscores = np.array(hr_tvals)
-    tscores[nans] = 0
-    return tscores
-
 def labelVector(hr,lr):
     labels = np.concatenate([np.ones(len(hr)),np.zeros(len(lr))]).astype(int)
     labelsDf = pd.DataFrame(labels)
     labelsDf.index = np.concatenate([hr,lr])
     labelsDf.columns = ["label"]
     return labelsDf
-
-def predictor(Dfs,Srvs,levels=50,numTrials=10,threshold=0.05,override=None,predictorFile=None):
-
-    numDatasets = len(Dfs)
-    if override is not None:
-        numDatasets = override
-
-    start = time.time()
-
-    tmpDfs = []
-    for i in range(numDatasets):
-        tmpDfs.append(Dfs[i].copy())
-    #tmpDfs.append(Dfs[0].copy())
-    #tmpDfs.append(Dfs[1].copy())
-
-    srvs = []
-    for i in range(numDatasets):
-        srvs.append(Srvs[i].copy())
-    #srvs.append(Srvs[0].copy())
-    #srvs.append(Srvs[1].copy())
-
-    pvals = []
-    branches = []
-    riskGroups = []
-    hr_proportions = [0.1,0.15,0.2,0.25,0.3]
-    lr_proportions = [0.65,0.7,0.75,0.8,0.85]
-    proportions = np.concatenate([hr_proportions,lr_proportions])
-
-    for level in range(levels):
-        try:
-            bestHits = []
-            for i in range(len(proportions)):
-                hits = []
-                proportion = proportions[i]
-                for trial in range(numTrials):
-                    if trial>0:
-                        for i in range(numDatasets):
-                            tmpDfs[i] = tmpDfs[i]*tmpDfs[i].loc[hit,:]
-                            
-                        #tmpDfs = [tmpDfs[0]*tmpDfs[0].loc[hit,:],tmpDfs[1]*tmpDfs[1].loc[hit,:]]
-                    tmpScores = []
-                    precisionValues = []
-                    for iteration in range(numDatasets):
-                        srv = srvs[iteration]
-                        tmpDf = tmpDfs[iteration]           
-                        num_hr = int(proportion*srv.shape[0])
-    
-                        if proportion in hr_proportions:
-                            hr_samples = srv.index[0:num_hr]
-                            lr_samples = srv.index[num_hr:]
-                        elif proportion in lr_proportions:
-                            hr_samples = srv.index[num_hr:] #reversed for lowest-risk prediction
-                            lr_samples = srv.index[0:num_hr] #reversed for lowest-risk prediction
-    
-                        restrictedLabels = np.concatenate([hr_samples,lr_samples])
-                        restrictedMatrix = tmpDf.loc[:,restrictedLabels]
-                        labels = labelVector(hr_samples,lr_samples)
-                        prec = precision(restrictedMatrix, labels)
-                        weightedPrecision = prec*np.array(np.sum(tmpDf,axis=1))**0.333
-                        precisionValues.append(weightedPrecision)
-    
-                    precisionMatrix = np.vstack(precisionValues)
-                    scores = np.mean(precisionMatrix,axis=0)
-                    hit = restrictedMatrix.index[np.argmax(scores)]
-                    if hit in hits:
-                        bestHits.append(hits)
-                        break
-                    hits.append(hit)
-                    if trial == numTrials-1:
-                        bestHits.append(hits)                
-    
-                tmpDfs = []
-                for i in range(numDatasets):
-                    tmpDfs.append(Dfs[i].copy())
-    
-                #tmpDfs[0] = Dfs[0]
-                #tmpDfs[1] = Dfs[1]
-    
-            finalScores = []
-            for bh in range(len(bestHits)):
-                hits = bestHits[bh]
-                tmpScores = []
-                for iteration in range(numDatasets):
-                    tmpDf = Dfs[iteration].copy()
-                    srv = srvs[iteration]
-                    for hit in hits:
-                        tmpDf = tmpDf*tmpDf.loc[hit,:]
-                    hr_samples = list(set(tmpDf.columns[tmpDf.loc[hits[-1],:]==1])&set(srv.index))
-                    lr_samples = list(set(tmpDf.columns[tmpDf.loc[hits[-1],:]==0])&set(srv.index))
-                    if min(len(hr_samples),len(lr_samples)) < 0.01*srv.shape[0]:
-                        tmpScores.append(0)
-                        continue
-                    gHR = np.array(srv.loc[hr_samples,"GuanScore"])
-                    gLR = np.array(srv.loc[lr_samples,"GuanScore"])
-                    ttest = stats.ttest_ind(gHR,gLR,equal_var=False)
-                    tmpScores.append(ttest[0])
-    
-                combinedScore = np.mean(tmpScores)
-                finalScores.append(combinedScore)
-    
-            selection = np.argmax(np.abs(np.array(finalScores)))
-    
-            hits = bestHits[selection]
-            tmpPvals = []
-            tmpHrs = []
-            tmpLrs = []
-            for iteration in range(numDatasets):
-                tmpDf = Dfs[iteration].copy()
-                srv = srvs[iteration]
-                for hit in hits:
-                    tmpDf = tmpDf*tmpDf.loc[hit,:]
-                hr_samples = list(set(tmpDf.columns[tmpDf.loc[hits[-1],:]==1])&set(srv.index))
-                lr_samples = list(set(tmpDf.columns[tmpDf.loc[hits[-1],:]==0])&set(srv.index))
-    
-                gHR = np.array(srv.loc[hr_samples,"GuanScore"])
-                gLR = np.array(srv.loc[lr_samples,"GuanScore"])
-                ttest = stats.ttest_ind(gHR,gLR,equal_var=False)
-                tmpPvals.append(ttest[1])
-    
-                if iteration == 0:
-                    if len(hr_samples) <= len(lr_samples):
-                        tag = "hr"
-                    elif len(hr_samples) > len(lr_samples):
-                        tag = "lr"
-    
-                if tag == "hr":
-                    tmpHrs.append(hr_samples)
-                    tmpLrs.append(lr_samples)
-                if tag == "lr":
-                    tmpHrs.append(lr_samples) 
-                    tmpLrs.append(hr_samples)
-    
-            print(min(tmpPvals))
-            if min(tmpPvals) > threshold:
-                break
-            pvals.append(min(tmpPvals))
-            branches.append(hits)
-            lrs = tmpLrs
-            riskGroups.append(tmpHrs)
-    
-            for iteration in range(numDatasets):
-                tmpDfs[iteration] = Dfs[iteration].loc[:,lrs[iteration]]
-                srvs[iteration] = srvs[iteration].loc[list(set(lrs[iteration])&set(srvs[iteration].index)),:]
-                srvs[iteration].sort_values(by="GuanScore",ascending=False,inplace=True)
-    
-            print(hits)  
-        except:
-            break
-
-    stop = time.time()
-    print("completed in {:.3f} minutes".format((stop-start)/60.))
-
-    ts = tscores(riskGroups,Srvs,numDatasets)
-    predictor_dictionary = {}
-    for i in range(len(branches)):
-        predictor_dictionary[i] = []
-        predictor_dictionary[i].append(branches[i])
-        predictor_dictionary[i].append(ts[i])
-
-    if predictorFile is not None:
-        write_json(dict_=predictor_dictionary,output_file=predictorFile)
-
-    return predictor_dictionary
-
-def predictorScores(df,srv,pred_dict):
-    scoresDf = pd.DataFrame(np.zeros(srv.shape[0]))
-    scoresDf.index = srv.index
-    scoresDf.columns = ["t-score"]
-
-    scores = []
-
-    labeled = set([])
-    for key in pred_dict.keys():
-        signature = pred_dict[key][0]
-        t = pred_dict[key][1]
-
-        tmpHrs = []
-        tmpDf = df.copy()
-        for hit in signature:
-            tmpDf = tmpDf*tmpDf.loc[hit,:]
-        hr_samples = list(set(tmpDf.columns[tmpDf.loc[signature[-1],:]==1])&set(srv.index)-labeled)
-        lr_samples = list(set(tmpDf.columns[tmpDf.loc[signature[-1],:]==0])&set(srv.index)-labeled)
-
-        if len(hr_samples) <= len(lr_samples):
-            tag = "hr"
-        elif len(hr_samples) > len(lr_samples):
-            tag = "lr"
-
-        if tag == "hr":
-            tmpHrs.append(hr_samples)
-            labeled = labeled|set(hr_samples)
-        if tag == "lr":
-            tmpHrs.append(lr_samples) 
-            labeled = labeled|set(lr_samples)
-
-        scores.append(tmpHrs)
-        scoresDf.loc[tmpHrs[0],"t-score"] = t
-
-    return scoresDf
-
-def predictClasses(predictor_scores,thresholds = None):
-    
-    if thresholds is None:
-        pcts = np.percentile(np.array(predictor_scores.iloc[:,0]),[10,90])
-        if pcts[0] < 0:
-            lowCut = np.ceil(pcts[0])
-        if pcts[0] >= 0:
-            print("thresholds could not be inferred. Please define thresholds and try again.")
-        if pcts[1] < 0:
-            print("thresholds could not be inferred. Please define thresholds and try again.")
-        if pcts[1] >= 0:
-            highCut = np.floor(pcts[1])
-        
-        modLow = -1
-        modHigh = 1
-        
-        if lowCut >= -1:
-            modLow = lowCut/2.
-        if highCut <= 1:
-            modHigh = highCut/2.
-            
-        thresholds = [highCut,modHigh,modLow,lowCut]
-        print("thresholds:", thresholds)
-
-    group0 = list(predictor_scores.index[np.where(predictor_scores.iloc[:,0]>=thresholds[0])[0]])
-    group1 = list(predictor_scores.index[np.where(predictor_scores.iloc[:,0]>=thresholds[1])[0]])
-    group2 = list(predictor_scores.index[np.where(predictor_scores.iloc[:,0]>=thresholds[2])[0]])
-    group3 = list(predictor_scores.index[np.where(predictor_scores.iloc[:,0]>thresholds[3])[0]])
-    group4 = list(predictor_scores.index[np.where(predictor_scores.iloc[:,0]<=thresholds[3])[0]])
-    
-    outputDf = predictor_scores.copy()
-    outputDf.columns = ["class"]
-    veryHigh = group0
-    veryLow = group4
-    modHigh = list(set(group1)-set(group0))
-    modLow = list(set(group3)-set(group2))
-    grouped = list(set(veryHigh)|set(veryLow)|set(modHigh)|set(modLow))
-    average = list(set(predictor_scores.index)-set(grouped))
-    
-    outputDf.loc[veryHigh,"class"] = 5
-    outputDf.loc[modHigh,"class"] = 4
-    outputDf.loc[average,"class"] = 3
-    outputDf.loc[modLow,"class"] = 2
-    outputDf.loc[veryLow,"class"] = 1
-    
-    return outputDf
-
-def predictorThresholds(predictor_scores):
-    
-    pcts = np.percentile(np.array(predictor_scores.iloc[:,0]),[15,85])
-    if pcts[0] < 0:
-        lowCut = np.ceil(pcts[0])
-    if pcts[0] >= 0:
-        print("thresholds could not be inferred. Please define thresholds and try again.")
-    if pcts[1] < 0:
-        print("thresholds could not be inferred. Please define thresholds and try again.")
-    if pcts[1] >= 0:
-        highCut = np.floor(pcts[1])
-    
-    modLow = -1
-    modHigh = 1
-    
-    if lowCut >= -1:
-        modLow = lowCut/2.
-    if highCut <= 1:
-        modHigh = highCut/2.
-        
-    thresholds = [highCut,modHigh,modLow,lowCut]
-    return thresholds
 
 def predictRisk(expressionDf,regulonModules,model_filename):
     import pickle
@@ -2910,3 +3314,526 @@ def swarmplot(samples,survival,savefile,ylabel="Relative risk",labels = None):
 
     
     return guan_srv_df
+
+def generatePredictionMatrix(srv,mtrx,high_risk_cutoff = 0.2):
+    
+    highRiskSamples = list(srv.index[0:int(high_risk_cutoff*srv.shape[0])])
+    lowRiskSamples = list(srv.index[int(high_risk_cutoff*srv.shape[0]):])
+
+    hrFlag = pd.DataFrame(np.ones((len(highRiskSamples),1)).astype(int))
+    hrFlag.index = highRiskSamples
+    hrFlag.columns = ["HR_FLAG"]
+
+    lrFlag = pd.DataFrame(np.zeros((len(lowRiskSamples),1)).astype(int))
+    lrFlag.index = lowRiskSamples
+    lrFlag.columns = ["HR_FLAG"]
+
+    hrMatrix = pd.concat([mtrx.loc[:,highRiskSamples].T,hrFlag],axis=1)
+    hrMatrix.columns = np.array(hrMatrix.columns).astype(str)
+    lrMatrix = pd.concat([mtrx.loc[:,lowRiskSamples].T,lrFlag],axis=1)
+    lrMatrix.columns = np.array(lrMatrix.columns).astype(str)
+    #predictionMatrix = pd.concat([hrMatrix,lrMatrix],axis=0)
+    
+    return hrMatrix, lrMatrix
+
+def plotRiskStratification(lbls,mtrx,srv,survival_tag,resultsDirectory=None):
+    import warnings
+    warnings.filterwarnings("ignore")
+    
+    hr_dt = mtrx.columns[lbls.astype(bool)]
+    lr_dt = mtrx.columns[(1-lbls).astype(bool)]
+
+    kmTag = "decision_tree"
+    kmFilename = ("_").join([survival_tag,kmTag,"high-risk",".pdf"])
+
+    groups = [hr_dt,lr_dt]
+    labels = ["High-risk","Low-risk"]
+
+    cox_vectors = []
+    srv_set = set(srv.index)
+    for i in range(len(groups)):
+        group = groups[i]
+        patients = list(set(group)&srv_set)
+        tmp_df = pd.DataFrame(np.zeros(srv.shape[0]))
+        tmp_df.index = srv.index
+        tmp_df.columns = [labels[i]]
+        tmp_df.loc[patients,labels[i]] = 1
+        cox_vectors.append(tmp_df)
+
+    pre_cox = pd.concat(cox_vectors,axis=1).T
+    pre_cox.head(5)
+
+    cox_dict = parallelMemberSurvivalAnalysis(membershipDf = pre_cox,numCores=1,survivalPath="",survivalData=srv)
+    print('Risk stratification of '+survival_tag+' has Hazard Ratio of {:.2f}'.format(cox_dict['High-risk'][0]))
+
+    if resultsDirectory is not None:
+        plotName = os.path.join(resultsDirectory,kmFilename)
+        kmplot(srv=srv,groups=groups,labels=labels,xlim_=(-100,1750),filename=plotName)  
+        plt.title('Dataset: '+survival_tag+'; HR: {:.2f}'.format(cox_dict['High-risk'][0]))
+
+    elif resultsDirectory is None:
+        kmplot(srv=srv,groups=groups,labels=labels,xlim_=(-100,1750),filename=None)
+        plt.title('Dataset: '+survival_tag+'; HR: {:.2f}'.format(cox_dict['High-risk'][0]))
+        
+    return
+
+def iAUC(srv,mtrx,classifier,plot_all=False):
+    from sklearn import metrics
+    
+    predicted_probabilities = classifier.predict_proba(np.array(mtrx.T))[:,1]
+    predicted_probabilities_df = pd.DataFrame(predicted_probabilities)
+    predicted_probabilities_df.index = mtrx.columns
+    predicted_probabilities_df.columns = ["probability_high_risk"]
+    
+    srv_observed = srv[srv.iloc[:,1]==1]
+    srv_unobserved = srv[srv.iloc[:,1]==0]
+
+    aucs = []
+    cutoffs = []
+    tpr_list = []
+    fpr_list = []
+    for cutoff in 30.5*np.arange(12,25,2):#range(0,max(list(srv.iloc[:,0]))+interval,interval):
+        srv_extended = srv_unobserved[srv_unobserved.iloc[:,0]>=cutoff]
+        if srv_extended.shape[0] > 0:
+            srv_total = pd.concat([srv_observed,srv_extended],axis=0)
+        elif srv_extended.shape[0] == 0:
+            srv_total = srv_observed.copy()
+        pass_index = np.where(srv_total.iloc[:,0]<cutoff)[0]
+        true_hr = []
+        if len(pass_index) > 0:
+            true_hr = srv_total.index[pass_index]
+        true_lr = list(set(srv_total.index)-set(true_hr))
+
+        tpr = []
+        fpr = []
+        for threshold in np.arange(0,1.02,0.01):
+            model_pp = predicted_probabilities_df.copy()
+            model_pp = model_pp.loc[list(set(model_pp.index)&set(srv_total.index)),:]
+            predicted_hr = model_pp.index[np.where(model_pp.iloc[:,0]>=threshold)[0]]
+            predicted_lr = list(set(model_pp.index)-set(predicted_hr))
+
+            tp = set(true_hr)&set(predicted_hr)
+            allpos = set(true_hr)
+            tn = set(true_lr)&set(predicted_lr)
+            allneg = set(true_lr)
+
+            if len(allpos) == 0:
+                tp_rate = 0
+            elif len(allpos) > 0:
+                tp_rate = len(tp)/float(len(allpos))
+
+            if len(allneg) == 0:
+                tn_rate = 0
+            elif len(allneg) > 0:        
+                tn_rate = len(tn)/float(len(allneg))
+
+            tpr.append(tp_rate)
+            fpr.append(1-tn_rate)
+        
+        if plot_all is True:
+            plt.figure()
+            plt.plot(fpr,tpr)  
+            plt.plot(np.arange(0,1.01,0.01),np.arange(0,1.01,0.01),"--") 
+            plt.ylim(-0.05,1.05)
+            plt.xlim(-0.05,1.05)
+            plt.title('ROC curve, cutoff = {:d}'.format(int(cutoff)))
+
+        area = metrics.auc(fpr,tpr)
+        aucs.append(area)
+        cutoffs.append(cutoff)
+        tpr_list.append(tpr)
+        fpr_list.append(fpr)
+
+    integrated_auc = np.mean(aucs)
+
+    print('classifier has integrated AUC of {:.3f}'.format(integrated_auc))
+    
+    tpr_stds = np.std(np.vstack(tpr_list),axis=0)
+    tpr_means = np.mean(np.vstack(tpr_list),axis=0)
+    fpr_means = np.mean(np.vstack(fpr_list),axis=0)
+    
+    plt.figure()
+    plt.plot(fpr_means,tpr_means+tpr_stds,'-',color="blue",LineWidth=1) 
+    plt.plot(fpr_means,tpr_means-tpr_stds,'-',color="blue",LineWidth=1)
+    plt.fill_between(fpr_means, tpr_means-tpr_stds, tpr_means+tpr_stds,color="blue",alpha=0.2)
+    plt.plot(fpr_means,tpr_means,'-k',LineWidth=1.5)
+    plt.plot(np.arange(0,1.01,0.01),np.arange(0,1.01,0.01),"--r") 
+    plt.ylim(-0.05,1.05)
+    plt.xlim(-0.05,1.05)
+    plt.title('Integrated AUC = {:.2f}'.format(integrated_auc))
+    plt.ylabel('Sensitivity',FontSize=14)
+    plt.xlabel('1-Specificity',FontSize=14)
+
+    return aucs, cutoffs, tpr_list, fpr_list
+
+#def riskStratification(lbls,mtrx,srv,survival_tag,classifier,resultsDirectory=None,plot_all=False):
+#    import warnings
+#    warnings.filterwarnings("ignore")
+#    
+#    hr_dt = mtrx.columns[lbls.astype(bool)]
+#    lr_dt = mtrx.columns[(1-lbls).astype(bool)]
+#
+#    kmTag = "decision_tree"
+#    kmFilename = ("_").join([survival_tag,kmTag,"high-risk",".pdf"])
+#
+#    groups = [hr_dt,lr_dt]
+#    labels = ["High-risk","Low-risk"]
+#
+#    cox_vectors = []
+#    srv_set = set(srv.index)
+#    for i in range(len(groups)):
+#        group = groups[i]
+#        patients = list(set(group)&srv_set)
+#        tmp_df = pd.DataFrame(np.zeros(srv.shape[0]))
+#        tmp_df.index = srv.index
+#        tmp_df.columns = [labels[i]]
+#        tmp_df.loc[patients,labels[i]] = 1
+#        cox_vectors.append(tmp_df)
+#
+#    pre_cox = pd.concat(cox_vectors,axis=1).T
+#    pre_cox.head(5)
+#
+#    cox_dict = parallelMemberSurvivalAnalysis(membershipDf = pre_cox,numCores=1,survivalPath="",survivalData=srv)
+#    print('Risk stratification of '+survival_tag+' has Hazard Ratio of {:.2f}'.format(cox_dict['High-risk'][0]))
+#
+#    if resultsDirectory is not None:
+#        plotName = os.path.join(resultsDirectory,kmFilename)
+#        kmplot(srv=srv,groups=groups,labels=labels,xlim_=(-100,1750),filename=plotName)  
+#        plt.title('Dataset: '+survival_tag+'; HR: {:.2f}'.format(cox_dict['High-risk'][0]))
+#
+#    elif resultsDirectory is None:
+#        kmplot(srv=srv,groups=groups,labels=labels,xlim_=(-100,1750),filename=None)
+#        plt.title('Dataset: '+survival_tag+'; HR: {:.2f}'.format(cox_dict['High-risk'][0]))
+#        
+#
+#    from sklearn import metrics
+#    
+#    predicted_probabilities = classifier.predict_proba(np.array(mtrx.T))[:,1]
+#    predicted_probabilities_df = pd.DataFrame(predicted_probabilities)
+#    predicted_probabilities_df.index = mtrx.columns
+#    predicted_probabilities_df.columns = ["probability_high_risk"]
+#    
+#    srv_observed = srv[srv.iloc[:,1]==1]
+#    srv_unobserved = srv[srv.iloc[:,1]==0]
+#
+#    aucs = []
+#    cutoffs = []
+#    tpr_list = []
+#    fpr_list = []
+#    for cutoff in 30.5*np.arange(12,25,2):#range(0,max(list(srv.iloc[:,0]))+interval,interval):
+#        srv_extended = srv_unobserved[srv_unobserved.iloc[:,0]>=cutoff]
+#        if srv_extended.shape[0] > 0:
+#            srv_total = pd.concat([srv_observed,srv_extended],axis=0)
+#        elif srv_extended.shape[0] == 0:
+#            srv_total = srv_observed.copy()
+#        pass_index = np.where(srv_total.iloc[:,0]<cutoff)[0]
+#        true_hr = []
+#        if len(pass_index) > 0:
+#            true_hr = srv_total.index[pass_index]
+#        true_lr = list(set(srv_total.index)-set(true_hr))
+#
+#        tpr = []
+#        fpr = []
+#        for threshold in np.arange(0,1.02,0.01):
+#            model_pp = predicted_probabilities_df.copy()
+#            model_pp = model_pp.loc[list(set(model_pp.index)&set(srv_total.index)),:]
+#            predicted_hr = model_pp.index[np.where(model_pp.iloc[:,0]>=threshold)[0]]
+#            predicted_lr = list(set(model_pp.index)-set(predicted_hr))
+#
+#            tp = set(true_hr)&set(predicted_hr)
+#            allpos = set(true_hr)
+#            tn = set(true_lr)&set(predicted_lr)
+#            allneg = set(true_lr)
+#
+#            if len(allpos) == 0:
+#                tp_rate = 0
+#            elif len(allpos) > 0:
+#                tp_rate = len(tp)/float(len(allpos))
+#
+#            if len(allneg) == 0:
+#                tn_rate = 0
+#            elif len(allneg) > 0:        
+#                tn_rate = len(tn)/float(len(allneg))
+#
+#            tpr.append(tp_rate)
+#            fpr.append(1-tn_rate)
+#        
+#        if plot_all is True:
+#            plt.figure()
+#            plt.plot(fpr,tpr)  
+#            plt.plot(np.arange(0,1.01,0.01),np.arange(0,1.01,0.01),"--") 
+#            plt.ylim(-0.05,1.05)
+#            plt.xlim(-0.05,1.05)
+#            plt.title('ROC curve, cutoff = {:d}'.format(int(cutoff)))
+#
+#        area = metrics.auc(fpr,tpr)
+#        aucs.append(area)
+#        cutoffs.append(cutoff)
+#        tpr_list.append(tpr)
+#        fpr_list.append(fpr)
+#
+#    integrated_auc = np.mean(aucs)
+#
+#    print('classifier has integrated AUC of {:.3f}'.format(integrated_auc))
+#    
+#    tpr_stds = np.std(np.vstack(tpr_list),axis=0)
+#    tpr_means = np.mean(np.vstack(tpr_list),axis=0)
+#    fpr_means = np.mean(np.vstack(fpr_list),axis=0)
+#    
+#    plt.figure()
+#    plt.plot(fpr_means,tpr_means+tpr_stds,'-',color="blue",LineWidth=1) 
+#    plt.plot(fpr_means,tpr_means-tpr_stds,'-',color="blue",LineWidth=1)
+#    plt.fill_between(fpr_means, tpr_means-tpr_stds, tpr_means+tpr_stds,color="blue",alpha=0.2)
+#    plt.plot(fpr_means,tpr_means,'-k',LineWidth=1.5)
+#    plt.plot(np.arange(0,1.01,0.01),np.arange(0,1.01,0.01),"--r") 
+#    plt.ylim(-0.05,1.05)
+#    plt.xlim(-0.05,1.05)
+#    plt.title('Integrated AUC = {:.2f}'.format(integrated_auc))
+#    plt.ylabel('Sensitivity',FontSize=14)
+#    plt.xlabel('1-Specificity',FontSize=14)
+#
+#    return aucs, cutoffs, tpr_list, fpr_list
+
+def riskStratification(lbls,mtrx,srv,survival_tag,classifier,resultsDirectory=None,plot_all=False):
+    import warnings
+    warnings.filterwarnings("ignore")
+
+    from sklearn import metrics
+    
+    f, (ax1, ax2) = plt.subplots(1, 2, sharey=False)
+    f.tight_layout(pad=1.08)
+    f.set_figwidth(10)
+    f.set_figheight(4)
+
+    predicted_probabilities = classifier.predict_proba(np.array(mtrx.T))[:,1]
+    predicted_probabilities_df = pd.DataFrame(predicted_probabilities)
+    predicted_probabilities_df.index = mtrx.columns
+    predicted_probabilities_df.columns = ["probability_high_risk"]
+    
+    srv_observed = srv[srv.iloc[:,1]==1]
+    srv_unobserved = srv[srv.iloc[:,1]==0]
+
+    aucs = []
+    cutoffs = []
+    tpr_list = []
+    fpr_list = []
+    for cutoff in 30.5*np.arange(12,25,2):#range(0,max(list(srv.iloc[:,0]))+interval,interval):
+        srv_extended = srv_unobserved[srv_unobserved.iloc[:,0]>=cutoff]
+        if srv_extended.shape[0] > 0:
+            srv_total = pd.concat([srv_observed,srv_extended],axis=0)
+        elif srv_extended.shape[0] == 0:
+            srv_total = srv_observed.copy()
+        pass_index = np.where(srv_total.iloc[:,0]<cutoff)[0]
+        true_hr = []
+        if len(pass_index) > 0:
+            true_hr = srv_total.index[pass_index]
+        true_lr = list(set(srv_total.index)-set(true_hr))
+
+        tpr = []
+        fpr = []
+        for threshold in np.arange(0,1.02,0.01):
+            model_pp = predicted_probabilities_df.copy()
+            model_pp = model_pp.loc[list(set(model_pp.index)&set(srv_total.index)),:]
+            predicted_hr = model_pp.index[np.where(model_pp.iloc[:,0]>=threshold)[0]]
+            predicted_lr = list(set(model_pp.index)-set(predicted_hr))
+
+            tp = set(true_hr)&set(predicted_hr)
+            allpos = set(true_hr)
+            tn = set(true_lr)&set(predicted_lr)
+            allneg = set(true_lr)
+
+            if len(allpos) == 0:
+                tp_rate = 0
+            elif len(allpos) > 0:
+                tp_rate = len(tp)/float(len(allpos))
+
+            if len(allneg) == 0:
+                tn_rate = 0
+            elif len(allneg) > 0:        
+                tn_rate = len(tn)/float(len(allneg))
+
+            tpr.append(tp_rate)
+            fpr.append(1-tn_rate)
+        
+        if plot_all is True:
+            plt.figure()
+            plt.plot(fpr,tpr)  
+            plt.plot(np.arange(0,1.01,0.01),np.arange(0,1.01,0.01),"--") 
+            plt.ylim(-0.05,1.05)
+            plt.xlim(-0.05,1.05)
+            plt.title('ROC curve, cutoff = {:d}'.format(int(cutoff)))
+
+        area = metrics.auc(fpr,tpr)
+        aucs.append(area)
+        cutoffs.append(cutoff)
+        tpr_list.append(tpr)
+        fpr_list.append(fpr)
+
+    integrated_auc = np.mean(aucs)
+
+    print('classifier has integrated AUC of {:.3f}'.format(integrated_auc))
+    
+    tpr_stds = np.std(np.vstack(tpr_list),axis=0)
+    tpr_means = np.mean(np.vstack(tpr_list),axis=0)
+    fpr_means = np.mean(np.vstack(fpr_list),axis=0)
+    
+    ax1.plot(fpr_means,tpr_means+tpr_stds,'-',color="blue",LineWidth=1) 
+    ax1.plot(fpr_means,tpr_means-tpr_stds,'-',color="blue",LineWidth=1)
+    ax1.fill_between(fpr_means, tpr_means-tpr_stds, tpr_means+tpr_stds,color="blue",alpha=0.2)
+    ax1.plot(fpr_means,tpr_means,'-k',LineWidth=1.5)
+    ax1.plot(np.arange(0,1.01,0.01),np.arange(0,1.01,0.01),"--r") 
+    ax1.set_ylim(-0.05,1.05)
+    ax1.set_xlim(-0.05,1.05)
+    ax1.set_title('Integrated AUC = {:.2f}'.format(integrated_auc))
+    ax1.set_ylabel('Sensitivity',FontSize=14)
+    ax1.set_xlabel('1-Specificity',FontSize=14)
+    
+    hr_dt = mtrx.columns[lbls.astype(bool)]
+    lr_dt = mtrx.columns[(1-lbls).astype(bool)]
+
+    kmTag = "decision_tree"
+    kmFilename = ("_").join([survival_tag,kmTag,"high-risk",".pdf"])
+
+    groups = [hr_dt,lr_dt]
+    labels = ["High-risk","Low-risk"]
+
+    cox_vectors = []
+    srv_set = set(srv.index)
+    for i in range(len(groups)):
+        group = groups[i]
+        patients = list(set(group)&srv_set)
+        tmp_df = pd.DataFrame(np.zeros(srv.shape[0]))
+        tmp_df.index = srv.index
+        tmp_df.columns = [labels[i]]
+        tmp_df.loc[patients,labels[i]] = 1
+        cox_vectors.append(tmp_df)
+
+    pre_cox = pd.concat(cox_vectors,axis=1).T
+    pre_cox.head(5)
+
+    cox_dict = parallelMemberSurvivalAnalysis(membershipDf = pre_cox,numCores=1,survivalPath="",survivalData=srv)
+    print('Risk stratification of '+survival_tag+' has Hazard Ratio of {:.2f}'.format(cox_dict['High-risk'][0]))
+
+    if resultsDirectory is not None:
+        plotName = os.path.join(resultsDirectory,kmFilename)
+        kmplot(srv=srv,groups=groups,labels=labels,xlim_=(-100,1750),filename=plotName)  
+        plt.title('Dataset: '+survival_tag+'; HR: {:.2f}'.format(cox_dict['High-risk'][0]))
+
+    elif resultsDirectory is None:
+        kmplot(srv=srv,groups=groups,labels=labels,xlim_=(-100,1750),filename=None)
+        plt.title('Dataset: '+survival_tag+'; HR: {:.2f}'.format(cox_dict['High-risk'][0]))
+        
+    return aucs, cutoffs, tpr_list, fpr_list
+
+def differentialActivity(regulon_matrix,reference_matrix,baseline_patients,relapse_patients,minRegulons = 5,useAllRegulons = False,maxRegulons = 5,highlight=None,savefile = None):
+
+    reference_matrix.index = np.array(reference_matrix.index).astype(str)
+    
+    genes = []
+    mean_baseline_frequency = []
+    mean_relapse_frequency = []
+    mean_significance = []
+    skipped = []
+
+    t1 = time.time()
+    for gene in list(set(regulon_matrix["Gene"])):
+        regulons_ = np.array(regulon_matrix[regulon_matrix.Gene==gene]["Regulon_ID"]).astype(str)
+        if len(regulons_)<minRegulons:
+            skipped.append(gene)
+            continue
+
+        baseline_freq = []
+        relapse_freq = []
+        neglogps = []
+
+        for regulon_ in regulons_:
+
+            baseline_values = reference_matrix.loc[regulon_,baseline_patients]
+            relapse_values = reference_matrix.loc[regulon_,relapse_patients]
+
+            indicator = len(set(reference_matrix.iloc[0,:]))
+
+            if indicator>2:
+                t, p = stats.ttest_ind(relapse_values,baseline_values)  
+
+            elif indicator ==2:
+                # chi square
+                rpos = np.sum(relapse_values)
+                if np.sum(rpos) == 0:
+                    continue
+                rneg = len(relapse_values)-rpos
+
+                bpos = np.sum(baseline_values)
+                if np.sum(bpos) == 0:
+                    continue        
+                bneg = len(baseline_values)-bpos
+
+                obs = np.array([[rpos,rneg],[bpos,bneg]])
+                chi2, p, dof, ex = stats.chi2_contingency(obs, correction=False)
+
+            if useAllRegulons is True:             
+                neglogps.append(-np.log10(p))
+                baseline_freq.append(np.mean(baseline_values))        
+                relapse_freq.append(np.mean(relapse_values))
+
+            elif useAllRegulons is False: 
+                if len(neglogps)<=maxRegulons:
+                    neglogps.append(-np.log10(p))
+                    baseline_freq.append(np.mean(baseline_values))
+                    relapse_freq.append(np.mean(relapse_values))
+
+                if len(neglogps)>maxRegulons:
+                    tmp_nlp = -np.log10(p)
+                    if min(neglogps) < tmp_nlp:
+                        argmin = np.argmin(neglogps)
+                        neglogps[argmin] = tmp_nlp
+                        tmp_baseline = np.mean(baseline_values)
+                        baseline_freq[argmin] = tmp_baseline
+                        tmp_relapse = np.mean(relapse_values)                    
+                        relapse_freq[argmin] = tmp_relapse
+
+        mean_relapse_frequency.append(np.mean(relapse_freq))
+        mean_baseline_frequency.append(np.mean(baseline_freq))    
+        mean_significance.append(np.mean(neglogps))
+        genes.append(gene)
+
+    baseline_over_relapse = np.array(mean_baseline_frequency).astype(float)/np.array(mean_relapse_frequency)
+    volcano_data_ = pd.DataFrame(np.vstack([mean_baseline_frequency,mean_relapse_frequency,baseline_over_relapse,mean_significance]).T)
+    volcano_data_.index = genes
+    volcano_data_.columns = ["phenotype1_frequency","phenotype2_frequency","phenotype1/phenotype2","-log10(p)"]
+    volcano_data_.sort_values(by="-log10(p)",ascending=False,inplace=True)
+    volcano_data_
+
+    t2 = time.time()
+
+    print('completed in {:.2f} minutes'.format((t2-t1)/60.))
+
+    insigvoldata_patients = volcano_data_.index[volcano_data_["-log10(p)"]<=-np.log10(0.05)]
+    sigvoldata_patients = volcano_data_.index[volcano_data_["-log10(p)"]>-np.log10(0.05)]
+
+    insigvoldata = volcano_data_.loc[insigvoldata_patients,:]
+    sigvoldata = volcano_data_.loc[sigvoldata_patients,:]
+
+    try:        
+        plt.scatter(sigvoldata["phenotype2_frequency"],sigvoldata["phenotype1/phenotype2"],color = [0.3,0.4,1],edgecolor = [0,0,1],alpha=0.4,s=5)
+        plt.scatter(insigvoldata["phenotype2_frequency"],insigvoldata["phenotype1/phenotype2"],color = [0.5,0.5,0.5],edgecolor = [0.25,0.25,0.25],alpha=0.4,s=5)
+        if highlight is not None:
+            if type(highlight) is not str:
+                if type(highlight) is not unicode:
+                    highlight = list(set(highlight)-set(skipped))
+            else:
+                highlight = list(set([highlight])-set(skipped))
+            
+            if len(highlight)>0:
+                plt.scatter(volcano_data_.loc[highlight,"phenotype2_frequency"],volcano_data_.loc[highlight,"phenotype1/phenotype2"],color = "red",edgecolor="blue",s=5)
+    
+        plt.ylim(-0.1,0.4+max(list(sigvoldata["phenotype1/phenotype2"])))
+        plt.ylabel("Phenotype1/Phenotype2",FontSize=14)
+        plt.xlabel("Phenotype2 frequency",FontSize=14)
+    
+        if savefile is not None:
+            plt.savefig(savefile,bbox_inches="tight")
+    except:
+        print('Error: Analysis was successful, but could not generate plot')
+
+    return volcano_data_
